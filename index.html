@@ -1,0 +1,1450 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tigers del Este — Orçamentos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<style>
+:root{
+  --bg:#11151b;
+  --surface:#181e26;
+  --surface-2:#1f2630;
+  --surface-3:#252d38;
+  --border:#2a323e;
+  --text:#e8eaf0;
+  --text-muted:#8c95a6;
+  --amber:#f2a93b;
+  --stripe:#e8632c;
+  --teal:#2dd9bd;
+  --danger:#ef4565;
+  --display:'Space Grotesk',ui-sans-serif,sans-serif;
+  --body:'Inter',ui-sans-serif,sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,monospace;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:var(--body);}
+#root{display:flex;min-height:100vh;}
+.stripes{display:inline-flex;gap:3px;vertical-align:middle;margin-right:8px;}
+.stripes span{width:4px;height:16px;border-radius:1px;display:inline-block;transform:skewX(-18deg);}
+.stripes span:nth-child(1){background:var(--amber);}
+.stripes span:nth-child(2){background:var(--stripe);}
+.stripes span:nth-child(3){background:var(--amber);opacity:.55;}
+
+/* SIDEBAR */
+.sidebar{width:230px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;padding:20px 14px;position:sticky;top:0;height:100vh;}
+.brand{display:flex;align-items:center;gap:8px;padding:4px 6px 18px 6px;border-bottom:1px solid var(--border);margin-bottom:16px;}
+.brand-name{font-family:var(--display);font-weight:700;font-size:16px;letter-spacing:.2px;}
+.brand-sub{font-size:11px;color:var(--text-muted);margin-top:2px;}
+.nav-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;color:var(--text-muted);cursor:pointer;font-size:14px;font-weight:500;margin-bottom:2px;transition:background .15s,color .15s;}
+.nav-item svg{width:17px;height:17px;flex-shrink:0;}
+.nav-item:hover{background:var(--surface-2);color:var(--text);}
+.nav-item.active{background:var(--surface-3);color:var(--amber);}
+.nav-item.active svg{stroke:var(--amber);}
+.sidebar-footer{margin-top:auto;padding-top:14px;border-top:1px solid var(--border);font-size:11px;color:var(--text-muted);line-height:1.5;}
+.sidebar-footer a{color:var(--teal);text-decoration:none;}
+
+/* MAIN */
+main{flex:1;padding:28px 34px;max-width:1180px;}
+.page-header{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:22px;flex-wrap:wrap;gap:10px;}
+.page-title{font-family:var(--display);font-weight:700;font-size:24px;}
+.page-desc{color:var(--text-muted);font-size:13px;margin-top:4px;}
+
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 20px;position:relative;overflow:hidden;}
+.card::before{content:"";position:absolute;top:0;left:0;height:3px;width:100%;background:linear-gradient(90deg,var(--amber),var(--stripe) 40%,transparent 70%);}
+.grid{display:grid;gap:14px;}
+.grid-4{grid-template-columns:repeat(4,1fr);}
+.grid-2{grid-template-columns:repeat(2,1fr);}
+@media (max-width:900px){.grid-4{grid-template-columns:repeat(2,1fr);}}
+
+.stat-label{font-size:12px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px;}
+.stat-value{font-family:var(--mono);font-size:26px;font-weight:600;margin-top:6px;}
+.stat-value.amber{color:var(--amber);}
+.stat-value.teal{color:var(--teal);}
+
+button{font-family:var(--body);font-weight:600;font-size:13px;border:none;border-radius:7px;padding:9px 14px;cursor:pointer;transition:filter .15s,opacity .15s;}
+.btn-primary{background:var(--amber);color:#1a1305;}
+.btn-primary:hover{filter:brightness(1.08);}
+.btn-secondary{background:var(--surface-3);color:var(--text);border:1px solid var(--border);}
+.btn-secondary:hover{background:#2c3542;}
+.btn-danger{background:rgba(239,69,101,.12);color:var(--danger);border:1px solid rgba(239,69,101,.3);}
+.btn-danger:hover{background:rgba(239,69,101,.2);}
+.btn-ghost{background:transparent;color:var(--text-muted);padding:6px 8px;}
+.btn-ghost:hover{color:var(--text);}
+button:disabled{opacity:.4;cursor:not-allowed;}
+
+input,select{background:var(--surface-2);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:8px 10px;font-size:13px;font-family:var(--body);width:100%;}
+input:focus,select:focus{outline:none;border-color:var(--amber);}
+input.mono,.mono{font-family:var(--mono);}
+label{font-size:12px;color:var(--text-muted);display:block;margin-bottom:5px;}
+.field{margin-bottom:0;}
+
+table{width:100%;border-collapse:collapse;font-size:13px;}
+th{text-align:left;color:var(--text-muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.3px;padding:8px 10px;border-bottom:1px solid var(--border);}
+td{padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:middle;}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:rgba(255,255,255,.015);}
+.tag{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;background:var(--surface-3);color:var(--text-muted);}
+.tag.low{color:var(--danger);background:rgba(239,69,101,.12);}
+.right{text-align:right;}
+.center{text-align:center;}
+
+.toast{position:fixed;bottom:22px;right:22px;background:var(--surface-3);border:1px solid var(--border);border-left:3px solid var(--amber);padding:12px 16px;border-radius:8px;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.4);z-index:999;max-width:320px;animation:slidein .2s ease;}
+.toast.error{border-left-color:var(--danger);}
+@keyframes slidein{from{transform:translateY(8px);opacity:0;}to{transform:translateY(0);opacity:1;}}
+
+.empty{text-align:center;padding:46px 20px;color:var(--text-muted);}
+.empty svg{width:36px;height:36px;stroke:var(--text-muted);margin-bottom:10px;}
+
+.section-title{font-family:var(--display);font-weight:600;font-size:15px;margin:0 0 12px 0;}
+.divider{height:1px;background:var(--border);margin:18px 0;}
+
+.icon-btn{background:transparent;border:none;color:var(--text-muted);cursor:pointer;padding:4px;}
+.icon-btn:hover{color:var(--text);}
+.icon-btn.danger:hover{color:var(--danger);}
+
+.totals-box{background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:16px 18px;}
+.totals-row{display:flex;justify-content:space-between;font-size:13px;padding:5px 0;color:var(--text-muted);}
+.totals-row.final{font-size:17px;color:var(--text);font-weight:700;border-top:1px solid var(--border);margin-top:8px;padding-top:10px;}
+.totals-row .v{font-family:var(--mono);}
+
+.checkbox-row{display:flex;align-items:center;gap:8px;}
+.checkbox-row input{width:auto;}
+
+.modal-bg{position:fixed;inset:0;background:rgba(8,10,14,.6);display:flex;align-items:center;justify-content:center;z-index:998;}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:22px;max-width:420px;width:90%;}
+
+.produto-dropdown{position:fixed;z-index:1000;background:var(--surface-3);border:1px solid var(--border);border-radius:9px;max-height:260px;overflow-y:auto;box-shadow:0 14px 36px rgba(0,0,0,.5);}
+.produto-dropdown .dd-item{padding:10px 12px;font-size:13px;cursor:pointer;border-bottom:1px solid var(--border);}
+.produto-dropdown .dd-item:last-child{border-bottom:none;}
+.produto-dropdown .dd-item:hover{background:var(--surface-2);}
+.produto-dropdown .dd-item .dd-codigo{color:var(--amber);font-family:var(--mono);font-size:11px;display:block;margin-bottom:2px;}
+.produto-dropdown .dd-empty{padding:12px;font-size:13px;color:var(--text-muted);}
+
+.hidden{display:none !important;}
+::-webkit-scrollbar{height:8px;width:8px;}
+::-webkit-scrollbar-thumb{background:var(--surface-3);border-radius:8px;}
+
+@media (max-width:760px){
+  #root{flex-direction:column;}
+  .sidebar{width:100%;height:auto;position:relative;flex-direction:row;align-items:center;overflow-x:auto;padding:10px 12px;}
+  .brand{border-bottom:none;border-right:1px solid var(--border);margin-bottom:0;padding:0 12px 0 0;margin-right:8px;}
+  .sidebar-footer{display:none;}
+  .nav-item{white-space:nowrap;padding:10px 14px;}
+  main{padding:16px 14px;}
+  .grid-4,.grid-2{grid-template-columns:1fr;}
+  input,select{font-size:16px;} /* evita zoom automático ao focar no iPhone */
+  .card{padding:16px;}
+  table{font-size:12.5px;}
+  th,td{padding:8px 6px;}
+  button{padding:10px 14px;}
+}
+</style>
+</head>
+<body>
+<div id="root">
+  <nav class="sidebar">
+    <div class="brand">
+      <span class="stripes"><span></span><span></span><span></span></span>
+      <div>
+        <div class="brand-name">Tigers del Este</div>
+        <div class="brand-sub">Orçamentos &amp; Catálogo</div>
+      </div>
+    </div>
+    <div id="nav"></div>
+    <div class="sidebar-footer">
+      Use o menu "Sincronização" para acessar de qualquer lugar.<br>
+      WhatsApp: <a href="https://wa.me/595973757761" target="_blank">+595 973 757761</a>
+    </div>
+  </nav>
+  <main id="main"></main>
+</div>
+<div id="modal-root"></div>
+<div id="produto-dropdown" class="produto-dropdown hidden"></div>
+<div id="toast-root"></div>
+
+<script>
+/* ===================== STORAGE ===================== */
+/* Dados salvos no navegador deste dispositivo (localStorage), com sincronização
+   opcional entre dispositivos via um "código de sincronização" (jsonblob.com). */
+const DB = {
+  async get(key, fallback){
+    try{
+      const v = localStorage.getItem('tigers_' + key);
+      return v ? JSON.parse(v) : fallback;
+    }catch(e){ return fallback; }
+  },
+  async set(key, value){
+    try{
+      localStorage.setItem('tigers_' + key, JSON.stringify(value));
+      scheduleCloudSync();
+      return true;
+    }
+    catch(e){ toast('Erro ao salvar dados neste navegador.', true); return false; }
+  }
+};
+
+/* ===================== SINCRONIZAÇÃO VIA GITHUB GIST =====================
+   Usa um Personal Access Token (PAT) do GitHub + um Gist privado como
+   "banco de dados" simples. O token e o ID do Gist ficam salvos no
+   localStorage deste navegador. Recomenda-se um token "classic" com
+   APENAS a permissão "gist" marcada (não dar acesso a repositórios). */
+const GIST_API = 'https://api.github.com/gists';
+const GIST_FILENAME = 'tigers_backup.json';
+
+let cloudSyncTimer = null;
+let cloudSyncStatus = 'idle'; // idle | syncing | ok | error
+let lastSyncDebug = [];
+
+function getGhCreds(){
+  try{
+    return {
+      token: localStorage.getItem('tigers_gh_token') || '',
+      gistId: localStorage.getItem('tigers_gh_gist_id') || ''
+    };
+  }catch(e){ return {token:'', gistId:''}; }
+}
+
+function hasGhSync(){
+  const c = getGhCreds();
+  return !!(c.token && c.gistId);
+}
+
+function ghHeaders(token){
+  return {
+    'Authorization': `token ${token}`,
+    'Accept': 'application/vnd.github+json',
+    'Content-Type': 'application/json'
+  };
+}
+
+async function ghCreateGist(token, data){
+  const res = await fetch(GIST_API, {
+    method:'POST',
+    headers: ghHeaders(token),
+    body: JSON.stringify({
+      description: 'Tigers del Este — backup de sincronização (não editar manualmente)',
+      public: false,
+      files: { [GIST_FILENAME]: { content: JSON.stringify(data) } }
+    })
+  });
+  if(!res.ok){
+    const errText = await res.text().catch(()=>'');
+    throw new Error(`GitHub respondeu ${res.status} ao criar o Gist: ${errText.slice(0,200)}`);
+  }
+  const json = await res.json();
+  return json.id;
+}
+
+async function ghGetGist(token, gistId){
+  const res = await fetch(`${GIST_API}/${gistId}`, { headers: ghHeaders(token) });
+  if(!res.ok){
+    const errText = await res.text().catch(()=>'');
+    throw new Error(`GitHub respondeu ${res.status} ao ler o Gist: ${errText.slice(0,200)}`);
+  }
+  const json = await res.json();
+  const file = json.files && json.files[GIST_FILENAME];
+  if(!file) throw new Error(`Não encontrei o arquivo "${GIST_FILENAME}" dentro deste Gist.`);
+  if(file.truncated && file.raw_url){
+    const rawRes = await fetch(file.raw_url);
+    return JSON.parse(await rawRes.text());
+  }
+  return JSON.parse(file.content);
+}
+
+async function ghUpdateGist(token, gistId, data){
+  const res = await fetch(`${GIST_API}/${gistId}`, {
+    method:'PATCH',
+    headers: ghHeaders(token),
+    body: JSON.stringify({ files: { [GIST_FILENAME]: { content: JSON.stringify(data) } } })
+  });
+  if(!res.ok){
+    const errText = await res.text().catch(()=>'');
+    throw new Error(`GitHub respondeu ${res.status} ao atualizar o Gist: ${errText.slice(0,200)}`);
+  }
+  return true;
+}
+
+function scheduleCloudSync(){
+  const {token, gistId} = getGhCreds();
+  if(!token || !gistId) return;
+  clearTimeout(cloudSyncTimer);
+  cloudSyncTimer = setTimeout(async ()=>{
+    cloudSyncStatus = 'syncing';
+    try{
+      await ghUpdateGist(token, gistId, {produtos: state.produtos, orcamentos: state.orcamentos, atualizadoEm: Date.now()});
+      cloudSyncStatus = 'ok';
+    }catch(e){
+      cloudSyncStatus = 'error';
+      lastSyncDebug = [{provider:'github', error: (e && e.message) ? e.message : String(e)}];
+    }
+    if(state.view === 'sync') render();
+  }, 1200);
+}
+
+async function createAutoGist(){
+  const tokenInput = document.getElementById('gh-token-input');
+  const token = tokenInput ? tokenInput.value.trim() : '';
+  if(!token){ toast('Cole seu GitHub Personal Access Token primeiro.', true); return; }
+  toast('Criando Gist no GitHub...');
+  lastSyncDebug = [];
+  try{
+    const id = await ghCreateGist(token, {produtos: state.produtos, orcamentos: state.orcamentos, atualizadoEm: Date.now()});
+    localStorage.setItem('tigers_gh_token', token);
+    localStorage.setItem('tigers_gh_gist_id', id);
+    cloudSyncStatus = 'ok';
+    toast('Gist criado e conectado! Use o mesmo Token e Gist ID nos outros dispositivos.');
+    render();
+  }catch(e){
+    lastSyncDebug = [{provider:'github', error: (e && e.message) ? e.message : String(e)}];
+    toast('Não consegui criar o Gist. Veja os detalhes técnicos abaixo.', true);
+    render();
+  }
+}
+
+async function connectGithubSync(){
+  const tokenInput = document.getElementById('gh-token-input');
+  const gistInput = document.getElementById('gh-gistid-input');
+  const token = tokenInput ? tokenInput.value.trim() : '';
+  const gistId = gistInput ? gistInput.value.trim() : '';
+  if(!token || !gistId){ toast('Informe o Token e o Gist ID para conectar a um Gist já existente.', true); return; }
+  toast('Conectando ao GitHub...');
+  lastSyncDebug = [];
+  try{
+    const data = await ghGetGist(token, gistId);
+    state.produtos = Array.isArray(data.produtos) ? data.produtos : [];
+    state.orcamentos = Array.isArray(data.orcamentos) ? data.orcamentos : [];
+    localStorage.setItem('tigers_gh_token', token);
+    localStorage.setItem('tigers_gh_gist_id', gistId);
+    localStorage.setItem('tigers_produtos', JSON.stringify(state.produtos));
+    localStorage.setItem('tigers_orcamentos', JSON.stringify(state.orcamentos));
+    cloudSyncStatus = 'ok';
+    toast('Conectado! Dados sincronizados via GitHub Gist.');
+    state.view = 'dashboard';
+    render();
+  }catch(e){
+    lastSyncDebug = [{provider:'github', error: (e && e.message) ? e.message : String(e)}];
+    toast('Falha ao conectar. Veja os detalhes técnicos abaixo.', true);
+    render();
+  }
+}
+
+function disconnectSync(){
+  localStorage.removeItem('tigers_gh_token');
+  localStorage.removeItem('tigers_gh_gist_id');
+  cloudSyncStatus = 'idle';
+  toast('Sincronização desativada. Os dados continuam salvos neste navegador.');
+  render();
+}
+
+function maskToken(token){
+  if(!token) return '';
+  if(token.length <= 10) return '•'.repeat(token.length);
+  return token.slice(0,6) + '•'.repeat(8) + token.slice(-4);
+}
+
+/* ===================== STATE ===================== */
+let state = {
+  view: 'dashboard',
+  produtos: [],
+  orcamentos: [],
+  draft: {
+    cliente: '',
+    cidade: '',
+    taxaDolar: '',
+    taxaCidade: '',
+    incluirNF: false,
+    nfPercent: '15',
+    itens: [] // {codigo,nome,categoria,precoMinUsd,quantidade,margem}
+  },
+  produtoSearch: '',
+  produtoCategoriaFiltro: '',
+  editingOrcamentoId: null
+};
+
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+
+/* ===================== UTIL ===================== */
+function fmtUSD(n){ return (n||0).toLocaleString('en-US',{style:'currency',currency:'USD'}); }
+function fmtBRL(n){ return (n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}); }
+function normalize(s){ return (s||'').toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim(); }
+
+function toast(msg, isError){
+  const root = document.getElementById('toast-root');
+  const el = document.createElement('div');
+  el.className = 'toast' + (isError ? ' error' : '');
+  el.textContent = msg;
+  root.appendChild(el);
+  const duration = Math.min(8000, Math.max(3200, msg.length * 60));
+  setTimeout(()=>{ el.remove(); }, duration);
+}
+
+function categoriasDerivadas(){
+  const set = new Set();
+  state.produtos.forEach(p => { if(p.categoria) set.add(p.categoria); });
+  return Array.from(set).sort((a,b)=>a.localeCompare(b));
+}
+
+/* ===================== CLASSIFICAÇÃO AUTOMÁTICA ===================== */
+/* Ordem importa: regras mais específicas primeiro, mais genéricas depois. */
+const CATEGORY_RULES = [
+  { test: /BABA ELE[CT]T?|BABY MONITOR|MONITOR DE BEB[EÊ]/i, categoria: 'Babá Eletrônica' },
+  { test: /\bTILE\b.*LIFE ?360|RASTREADOR BLUETOOTH/i, categoria: 'Rastreadores Bluetooth' },
+  { test: /\bDRONE\b/i, categoria: 'Drones' },
+  { test: /ELECTRIC SCOOTER|\bPATINETE\b/i, categoria: 'Patinetes Elétricos' },
+  { test: /\bLENTE\b.*\bMM\b|\bCANON\b|\bNIKON\b/i, categoria: 'Fotografia' },
+  { test: /INSTA ?360|ACTION ?CAM|C[AÂ]MERA DE A[CÇ][AÃ]O|360°|\bGOPRO\b|CAM ION AIR/i, categoria: 'Câmeras 360 / Ação' },
+  { test: /\bDS-|HIKVISION|\bDVR\b|\bNVR\b|C[AÂ]MERA|CFTV|VIDEOPORTEIRO/i, categoria: 'CFTV — Câmeras e Gravadores' },
+  { test: /RAYNEO|AR GLASSES|VR GLASSES/i, categoria: 'Óculos AR/VR' },
+  { test: /IDEAHUB|PANTALLA INTELIGENTE|IDEASHARE|\bMICROFONE\b/i, categoria: 'Huawei IdeaHub / Colaboração' },
+  { test: /SONOFF|BROADLINK|\bTAPO\b|LAMPADA INTELIGENTE|TOMADA WIFI|ROBOT VACUUM/i, categoria: 'Casa Inteligente (Smart Home)' },
+  { test: /DECT ?IP|\bIP PHONE\b|\bVOIP\b|\bDP\d{3}\b/i, categoria: 'Telefonia IP / VoIP' },
+  { test: /LICEN[CÇ]A|LICENCIA/i, categoria: 'Licenças e Software' },
+  { test: /\bCEL\b.*BLACKVIEW|\bSMARTPHONE\b|\bCELULAR\b/i, categoria: 'Celulares e Smartphones' },
+  { test: /\bTABLET\b/i, categoria: 'Tablets' },
+  { test: /FUSION SPLICER|\bF\.|PIGTAIL|SPLITTER|CAIXA [OÓ]TICA|\bMUFA\b|\bCTO\b|\bODF\b|FIBRA ?[OÓ]?P?TICA|\bGBIC\b|\bSFP\+?\b|\bXFP\b|CONECTOR FIBRA|CONVERSOR DE FIBRA|MEDIA CONVERTER|\bTL-SM\d/i, categoria: 'Redes — Fibra Óptica e Acessórios' },
+  { test: /\bMA5800\b|TERMINADOR [OÓ]PTICO/i, categoria: 'Redes — OLT' },
+  { test: /\bEG8|\bHG[68]|\bHS8|\bONT\b|\bONU\b|GPON|EPON|\bPON\b|FIBERHOME|\bXPON\b/i, categoria: 'Redes — ONT/ONU' },
+  { test: /\bOLT\b/i, categoria: 'Redes — OLT' },
+  { test: /\bAP[\s\-]?\d{2,4}[A-Z]?\b|ACC?ESS ?POINT|PONTO DE ACESSO|AIRENGINE|\bEAP\d{2,4}[A-Z]*\b|\bOMADA\b/i, categoria: 'Redes — Access Point' },
+  { test: /\bSWITCH\b|\bS\d{3,4}[A-Z\-]|HUB-SWI|\bSG\d{4}\b|\bT\d{3,4}G\b/i, categoria: 'Redes — Switch' },
+  { test: /\bTL-WN\d{3}|ARCHER T\d[A-Z]*U|MERCUSYS (USB|MA\d)|\bNIC\b|PCI EXPRESS|PCI WIRELES|\bHUB\b.*USB|USB.*HUB|\bUE\d{3}[A-Z]?\b|\bUC\d{3}\b|\bUB5A\b|REDE TG-\d|10 GIGABIT PCIE/i, categoria: 'Redes — Adaptadores e Acessórios' },
+  { test: /ROTEADOR|\bROUTER\b|\bGATEWAY\b|\bAR\d{2,4}\b|\bDIR-?\d{3}\b|\bARCHER\b|\bDECO\b|\bHALO\b|\bMESH\b|\bNETENGINE\b|\bCR8D|\bNE8000\b|\bEC\d{3}\b/i, categoria: 'Redes — Roteador' },
+  { test: /REPETIDOR|EXTENSOR|RANGE EXTENDER|\bEXTENDER\b|POWERLINE|\bWPA\d{3,4}\b|\bRE\d{3}[A-Z]?\b|TL-WA\d{3}RE/i, categoria: 'Redes — Repetidor/Extensor' },
+  { test: /\bMODEM\b/i, categoria: 'Redes — Modem' },
+  { test: /ANTENA|ANTENNA/i, categoria: 'Redes — Antena' },
+  { test: /PATCH ?CORD|CABO DE REDE|CABO UTP|CONECTOR RJ|\bRJ-?45\b/i, categoria: 'Redes — Cabos e Conectores' },
+  { test: /POWER SUPPLY|\bFONTE\b|\bCABINET\b|\bCOOLER\b|GAVETA HD|AIR CONDITIONER|\bCASE\b|\bBATTERY P\/|\bNOBREAK\b|\bUPS\b|\bRACK\b|SERVER CAB|POE INJECTOR/i, categoria: 'Redes — Infraestrutura e Energia' },
+  { test: /BEURER|TENS[IÍ]OMETRO|TERM[OÔ]METRO|OX[IÍ]METRO|BALAN[CÇ]A DIGITAL|NEBULIZADOR|MASSAGEADOR/i, categoria: 'Saúde e Bem-estar' },
+  { test: /ALISADOR|SMOOTH SKIN|LASER HAIR|HAIR REMOVER|EYE REFRESH|EPILADOR/i, categoria: 'Beleza e Cuidados Pessoais' },
+  { test: /SMARTWATCH|SMART ?WATCH|REL[OÓ]GIO INTELIGENTE|\bWATCH\b/i, categoria: 'Wearables — Smartwatch' },
+  { test: /SMART ?BAND|PULSEIRA INTELIGENTE/i, categoria: 'Wearables — Smartband' },
+  { test: /OCULOS.*BLUETOOTH|SUNGLASSES.*BLUETOOTH|CAIXA DE SOM|\bSPEAKER\b|SOUNDBAR|MICRO SYSTEM|HOME THEATER|ALTAVOZ/i, categoria: 'Áudio — Caixas de Som' },
+  { test: /FONE DE OUVIDO|EARBUD|HEADSET|EARPHONE|\bFONE\b/i, categoria: 'Áudio — Fones' },
+  { test: /\bCARTUCHO\b|\bCARTRIDGE\b|\bTONER\b|\bRIBBON\b|PANTUM|IMPRESSORA|\bPRINTER\b|\bIMP\b|REEMPLAZABLE EPSON|EPSON T\d|\bHPRT\b|DYE-SUB/i, categoria: 'Impressoras e Suprimentos' },
+  { test: /PEN ?DRIVE|MEMORY (CARD|SANDISK)|CART[AÃ]O DE MEM[OÓ]RIA|MICRO ?SD|\bSSD\b|\bHDD\b/i, categoria: 'Armazenamento' },
+  { test: /\bGPU\b|PLACA DE V[IÍ]DEO|\bVGA\b|RADEON|GEFORCE/i, categoria: 'Placas de Vídeo (GPU)' },
+  { test: /\bWACOM\b|DIGITIZER|TABLET GR[AÁ]FIC/i, categoria: 'Periféricos de Computador' },
+  { test: /GMKTEC|MINI ?PC|\bNOTEBOOK\b|\bDESKTOP\b|\bNB\b|\bGAMER\b/i, categoria: 'Computadores' },
+  { test: /PROJECTOR|PROJETOR/i, categoria: 'Projetores' },
+  { test: /\bMONITOR\b/i, categoria: 'Monitores' },
+  { test: /\bTELEVISOR\b|SMART ?TV\b|\bTV MOTOROLA\b/i, categoria: 'Televisores' },
+  { test: /POWER ?BANK|CARREGADOR|BATERIA EXTERNA|CHARGING STATION/i, categoria: 'Carregadores e Energia' },
+  { test: /TV ?BOX|TV ?STICK|CHROMECAST|HOMATICS/i, categoria: 'TV Box / Streaming' },
+  { test: /\bGPS\b/i, categoria: 'GPS e Navegação' }
+];
+
+function detectCategoria(codigo, nome){
+  const texto = `${codigo} ${nome}`.toUpperCase();
+  for(const rule of CATEGORY_RULES){
+    if(rule.test.test(texto)) return rule.categoria;
+  }
+  return 'Outros';
+}
+
+/* ===================== ICONS (inline SVG, minimal) ===================== */
+const ICONS = {
+  dashboard: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>',
+  produtos: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>',
+  orcamento: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 2h6l1 4H8l1-4z"/><rect x="5" y="6" width="14" height="16" rx="2"/><path d="M9 12h6M9 16h6"/></svg>',
+  historico: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2"/><path d="M9 1h6"/></svg>',
+  upload: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M5 20h14"/></svg>',
+  plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>',
+  trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>',
+  pdf: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>',
+  xlsx: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13l3 4M12 13l-3 4"/></svg>',
+  search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>',
+  eye: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>',
+  sync: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 16v4h4M21 8V4h-4"/></svg>'
+};
+
+/* ===================== NAV ===================== */
+const NAV_ITEMS = [
+  {id:'dashboard', label:'Painel', icon:'dashboard'},
+  {id:'produtos', label:'Produtos', icon:'produtos'},
+  {id:'orcamento', label:'Novo Orçamento', icon:'orcamento'},
+  {id:'historico', label:'Histórico', icon:'historico'},
+  {id:'sync', label:'Sincronização', icon:'sync'}
+];
+
+function renderNav(){
+  const nav = document.getElementById('nav');
+  nav.innerHTML = NAV_ITEMS.map(it => `
+    <div class="nav-item ${state.view===it.id?'active':''}" data-nav="${it.id}">
+      ${ICONS[it.icon]}<span>${it.label}</span>
+    </div>`).join('');
+  nav.querySelectorAll('[data-nav]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      state.view = el.getAttribute('data-nav');
+      if(state.view === 'orcamento') resetDraftIfNotEditing();
+      render();
+    });
+  });
+}
+
+function resetDraftIfNotEditing(){
+  if(!state.editingOrcamentoId){
+    state.draft = {cliente:'',cidade:'',taxaDolar:'',taxaCidade:'',incluirNF:false,nfPercent:'15',itens:[]};
+  }
+}
+
+/* ===================== RENDER ROOT ===================== */
+function render(){
+  renderNav();
+  const main = document.getElementById('main');
+  if(state.view==='dashboard') main.innerHTML = viewDashboard();
+  else if(state.view==='produtos') main.innerHTML = viewProdutos();
+  else if(state.view==='orcamento') main.innerHTML = viewOrcamento();
+  else if(state.view==='historico') main.innerHTML = viewHistorico();
+  else if(state.view==='sync') main.innerHTML = viewSync();
+  attachHandlers();
+}
+
+/* ===================== DASHBOARD ===================== */
+function viewDashboard(){
+  const totalProdutos = state.produtos.length;
+  const totalOrcamentos = state.orcamentos.length;
+  const volUSD = state.orcamentos.reduce((s,o)=>s+o.totalUsd,0);
+  const volBRL = state.orcamentos.reduce((s,o)=>s+o.totalFinal,0);
+  const porCategoria = {};
+  state.produtos.forEach(p=>{ const c = p.categoria||'Sem categoria'; porCategoria[c]=(porCategoria[c]||0)+1; });
+  const catEntries = Object.entries(porCategoria).sort((a,b)=>b[1]-a[1]);
+  const maxCat = catEntries.length ? catEntries[0][1] : 1;
+
+  return `
+    <div class="page-header">
+      <div>
+        <div class="page-title">Painel</div>
+        <div class="page-desc">Visão geral do catálogo e dos orçamentos gerados</div>
+      </div>
+    </div>
+    ${!hasGhSync() ? `
+    <div class="card" style="margin-bottom:18px;border-color:var(--amber);">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+        <div>
+          <div class="section-title" style="margin-bottom:4px;">📱 Acessar do celular, outro navegador ou computador?</div>
+          <div style="font-size:13px;color:var(--text-muted);">Agora os dados ficam salvos só neste navegador. Ative a sincronização para ver o mesmo catálogo e histórico em qualquer lugar.</div>
+        </div>
+        <button class="btn-primary" id="btn-goto-sync">Ativar sincronização</button>
+      </div>
+    </div>` : ''}
+    <div class="grid grid-4" style="margin-bottom:18px;">
+      <div class="card"><div class="stat-label">Produtos cadastrados</div><div class="stat-value">${totalProdutos}</div></div>
+      <div class="card"><div class="stat-label">Categorias</div><div class="stat-value">${catEntries.length}</div></div>
+      <div class="card"><div class="stat-label">Orçamentos criados</div><div class="stat-value">${totalOrcamentos}</div></div>
+      <div class="card"><div class="stat-label">Volume (USD / BRL)</div><div class="stat-value amber" style="font-size:16px;">${fmtUSD(volUSD)}</div><div class="stat-value teal" style="font-size:16px;margin-top:2px;">${fmtBRL(volBRL)}</div></div>
+    </div>
+    <div class="grid grid-2">
+      <div class="card">
+        <div class="section-title">Produtos por categoria</div>
+        ${catEntries.length ? catEntries.map(([cat,count])=>`
+          <div style="margin-bottom:10px;">
+            <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-muted);margin-bottom:4px;">
+              <span>${escapeHtml(cat)}</span><span class="mono">${count}</span>
+            </div>
+            <div style="height:7px;background:var(--surface-3);border-radius:4px;overflow:hidden;">
+              <div style="height:100%;width:${(count/maxCat*100)}%;background:linear-gradient(90deg,var(--amber),var(--stripe));border-radius:4px;"></div>
+            </div>
+          </div>`).join('') : emptyState('Nenhum produto importado ainda.')}
+      </div>
+      <div class="card">
+        <div class="section-title">Últimos orçamentos</div>
+        ${state.orcamentos.length ? [...state.orcamentos].sort((a,b)=>b.criadoEm-a.criadoEm).slice(0,6).map(o=>`
+          <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;">
+            <div><strong>${escapeHtml(o.cliente||'Sem nome')}</strong><div style="font-size:11px;color:var(--text-muted);">${escapeHtml(o.cidade||'-')} · ${new Date(o.criadoEm).toLocaleDateString('pt-BR')}</div></div>
+            <div class="mono right">${fmtBRL(o.totalFinal)}</div>
+          </div>`).join('') : emptyState('Nenhum orçamento criado ainda.')}
+      </div>
+    </div>
+  `;
+}
+
+function emptyState(msg){
+  return `<div class="empty">${ICONS.search}<div>${msg}</div></div>`;
+}
+
+function escapeHtml(s){
+  return (s||'').toString().replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* ===================== PRODUTOS ===================== */
+function viewProdutos(){
+  const cats = categoriasDerivadas();
+  const term = normalize(state.produtoSearch);
+  const filtered = state.produtos.filter(p=>{
+    const matchTerm = !term || normalize(p.codigo).includes(term) || normalize(p.nome).includes(term);
+    const matchCat = !state.produtoCategoriaFiltro || p.categoria === state.produtoCategoriaFiltro;
+    return matchTerm && matchCat;
+  });
+
+  return `
+    <div class="page-header">
+      <div>
+        <div class="page-title">Produtos</div>
+        <div class="page-desc">${state.produtos.length} produtos no catálogo · importe uma planilha Excel para atualizar preços e estoque</div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn-secondary" id="btn-reclassificar" style="display:inline-flex;align-items:center;gap:6px;" title="Reclassifica produtos sem categoria definida ou marcados como 'Outros'">↻ Reclassificar</button>
+        <label class="btn-primary" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;">
+          ${ICONS.upload} Importar Excel
+          <input type="file" id="import-input" accept=".xlsx,.xls,.csv" class="hidden">
+        </label>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px;">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+        <div style="flex:2;min-width:220px;">
+          <label>Buscar por nome ou código</label>
+          <input id="produto-search" placeholder="Ex: S310-24P4X" value="${escapeHtml(state.produtoSearch)}">
+        </div>
+        <div style="flex:1;min-width:160px;">
+          <label>Categoria</label>
+          <select id="produto-categoria-filtro">
+            <option value="">Todas</option>
+            ${cats.map(c=>`<option value="${escapeHtml(c)}" ${state.produtoCategoriaFiltro===c?'selected':''}>${escapeHtml(c)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      ${filtered.length ? `
+      <div style="overflow-x:auto;">
+      <table>
+        <thead><tr>
+          <th>Código</th><th>Produto</th><th>Categoria</th><th class="right">Estoque</th><th class="right">Preço mín. (USD)</th>
+        </tr></thead>
+        <tbody>
+          ${filtered.map(p=>`
+            <tr>
+              <td class="mono">${escapeHtml(p.codigo)}</td>
+              <td>${escapeHtml(p.nome)}</td>
+              <td><input list="categorias-datalist" class="produto-categoria-input" data-codigo="${escapeHtml(p.codigo)}" value="${escapeHtml(p.categoria)}" style="min-width:170px;"></td>
+              <td class="right mono">${p.estoque <= 0 ? '<span class="tag low">'+p.estoque+'</span>' : p.estoque}</td>
+              <td class="right mono">${fmtUSD(p.precoMinUsd)}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+      </div>
+      <datalist id="categorias-datalist">
+        ${cats.map(c=>`<option value="${escapeHtml(c)}"></option>`).join('')}
+      </datalist>` : emptyState('Nenhum produto encontrado. Importe uma planilha Excel para começar.')}
+    </div>
+
+    <div class="card" style="margin-top:16px;">
+      <div class="section-title">Formato esperado da planilha</div>
+      <div style="font-size:13px;color:var(--text-muted);line-height:1.6;">
+        Colunas reconhecidas (em português ou espanhol): <span class="mono">Código / Codigo</span>, <span class="mono">Nome / Descrição / Descripcion</span>, <span class="mono">Categoria</span> (opcional — criada automaticamente se não existir), <span class="mono">Estoque / Stock</span>, <span class="mono">Preço mínimo / Precio Minimo</span> (em USD).
+        Toda nova importação <strong>substitui completamente</strong> o catálogo atual pelos produtos da nova planilha (o sistema confirma antes de substituir). Categorias que você já ajustou manualmente são mantidas para os códigos que continuarem aparecendo na nova planilha. Linhas sem código, nome ou preço são ignoradas.
+      </div>
+    </div>
+  `;
+}
+
+/* Excel import */
+function parseExcelHeaders(row){
+  const map = {};
+  Object.keys(row).forEach(k=>{
+    const nk = normalize(k);
+    if(!map.codigo && (nk.includes('codigo') || nk.includes('cod.') || nk === 'cod' || nk.includes('sku'))) map.codigo = k;
+    else if(!map.nome && (nk.includes('nome') || nk.includes('descricao') || nk.includes('descripcion') || nk.includes('producto') || nk.includes('produto') || nk.includes('item'))) map.nome = k;
+    else if(!map.categoria && nk.includes('categoria')) map.categoria = k;
+    else if(!map.estoque && (nk.includes('estoque') || nk.includes('stock') || nk.includes('quantidade') || nk.includes('cantidad') || nk.includes('disponivel') || nk.includes('disponible') || nk.includes('saldo') || nk.includes('qtd') || nk.includes('qty'))) map.estoque = k;
+    else if(!map.precoMinUsd && (nk.includes('preco') || nk.includes('preço') || nk.includes('precio'))) map.precoMinUsd = k;
+  });
+  return map;
+}
+
+function handleExcelImport(file){
+  const reader = new FileReader();
+  reader.onload = (e)=>{
+    try{
+      const wb = XLSX.read(e.target.result, {type:'array'});
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, {defval:''});
+      if(!rows.length){ toast('A planilha está vazia.', true); return; }
+      const map = parseExcelHeaders(rows[0]);
+      if(!map.codigo || !map.nome || !map.precoMinUsd){
+        toast('Não encontrei as colunas obrigatórias (Código, Nome, Preço mínimo). Verifique o cabeçalho da planilha.', true);
+        return;
+      }
+      const oldCount = state.produtos.length;
+      showConfirmModal({
+        title: 'Substituir catálogo?',
+        message: `Esta nova planilha vai substituir todo o catálogo atual (${oldCount} produto${oldCount===1?'':'s'}) — os produtos do arquivo anterior que não estiverem nesta nova planilha serão removidos. Orçamentos já salvos no histórico não são afetados.`,
+        confirmLabel: 'Substituir catálogo',
+        onConfirm: ()=> commitImport(rows, map)
+      });
+    }catch(err){
+      toast('Não consegui ler essa planilha. Verifique o formato do arquivo.', true);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function commitImport(rows, map){
+  const oldCategoriaByCodigo = {};
+  state.produtos.forEach(p=>{ oldCategoriaByCodigo[p.codigo] = p.categoria; });
+  const oldCount = state.produtos.length;
+  const novos = [];
+  let skipped = 0;
+  rows.forEach(row=>{
+    const codigo = String(row[map.codigo]||'').trim();
+    const nome = String(row[map.nome]||'').trim();
+    const precoMinUsd = Number(row[map.precoMinUsd])||0;
+    if(!codigo || !nome || precoMinUsd <= 0){ skipped++; return; }
+    const categoriaPlanilha = map.categoria ? String(row[map.categoria]||'').trim() : '';
+    const estoque = map.estoque ? Number(row[map.estoque])||0 : 0;
+    let categoria;
+    if(categoriaPlanilha){
+      categoria = categoriaPlanilha;
+    }else{
+      const prev = oldCategoriaByCodigo[codigo];
+      categoria = (prev && prev !== 'Outros' && prev !== 'Sem categoria') ? prev : detectCategoria(codigo, nome);
+    }
+    novos.push({codigo, nome, categoria, estoque, precoMinUsd});
+  });
+  state.produtos = novos;
+  DB.set('produtos', state.produtos);
+  closeModal();
+  let msg = `Catálogo substituído: ${novos.length} produto(s) importado(s), ${oldCount} produto(s) anterior(es) removido(s).`;
+  if(skipped) msg += ` ${skipped} linha(s) ignorada(s) por falta de código/nome/preço.`;
+  if(!map.estoque) msg += ` Atenção: não encontrei uma coluna de estoque nesta planilha — todos os produtos ficaram com estoque 0.`;
+  toast(msg);
+  render();
+}
+
+function showConfirmModal({title, message, confirmLabel, onConfirm}){
+  const root = document.getElementById('modal-root');
+  root.innerHTML = `
+    <div class="modal-bg" id="confirm-modal-bg">
+      <div class="modal">
+        <div class="section-title">${escapeHtml(title)}</div>
+        <div style="font-size:13px;color:var(--text-muted);line-height:1.6;margin-bottom:18px;">${escapeHtml(message)}</div>
+        <div style="display:flex;justify-content:flex-end;gap:10px;">
+          <button class="btn-secondary" id="confirm-modal-cancel">Cancelar</button>
+          <button class="btn-primary" id="confirm-modal-ok">${escapeHtml(confirmLabel)}</button>
+        </div>
+      </div>
+    </div>`;
+  document.getElementById('confirm-modal-cancel').addEventListener('click', closeModal);
+  document.getElementById('confirm-modal-bg').addEventListener('click', (e)=>{ if(e.target.id==='confirm-modal-bg') closeModal(); });
+  document.getElementById('confirm-modal-ok').addEventListener('click', onConfirm);
+}
+
+function closeModal(){
+  document.getElementById('modal-root').innerHTML = '';
+  const fi = document.getElementById('import-input');
+  if(fi) fi.value = '';
+}
+
+/* ===================== ORÇAMENTO (builder) ===================== */
+function calcLine(item){
+  const precoFinal = Number(item.precoMinUsd)||0;
+  const subtotalUsd = precoFinal * (Number(item.quantidade)||0);
+  return {precoFinal, subtotalUsd};
+}
+
+function calcTotais(draft){
+  const totalUsd = draft.itens.reduce((s,it)=> s + calcLine(it).subtotalUsd, 0);
+  const taxaDolar = Number(draft.taxaDolar)||0;
+  const totalBrl = totalUsd * taxaDolar;
+  const taxaCidadePercent = Number(draft.taxaCidade)||0;
+  const valorTaxaCidade = totalBrl * (taxaCidadePercent/100);
+  const totalBrlFinal = totalBrl + valorTaxaCidade;
+  const nfPercent = Number(draft.nfPercent)||0;
+  const totalFinal = draft.incluirNF ? totalBrlFinal * (1 + nfPercent/100) : totalBrlFinal;
+  return {totalUsd, totalBrl, taxaCidadePercent, valorTaxaCidade, totalBrlFinal, nfPercent, totalFinal};
+}
+
+function buildTotaisHTML(d, totais){
+  return `
+    <div class="totals-row"><span>Total em USD</span><span class="v">${fmtUSD(totais.totalUsd)}</span></div>
+    <div class="totals-row"><span>Conversão para BRL</span><span class="v">${fmtBRL(totais.totalBrl)}</span></div>
+    ${totais.taxaCidadePercent ? `<div class="totals-row"><span>Taxa da cidade / frete (${totais.taxaCidadePercent}%)</span><span class="v">${fmtBRL(totais.valorTaxaCidade)}</span></div>` : ''}
+    ${d.incluirNF ? `<div class="totals-row"><span>Nota Fiscal (+${totais.nfPercent}%)</span><span class="v">${fmtBRL(totais.totalBrlFinal*(totais.nfPercent/100))}</span></div>` : ''}
+    <div class="totals-row final"><span>Total final</span><span class="v">${fmtBRL(totais.totalFinal)}</span></div>
+  `;
+}
+
+function viewOrcamento(){
+  const d = state.draft;
+  const totais = calcTotais(d);
+  const isEditing = !!state.editingOrcamentoId;
+
+  return `
+    <div class="page-header">
+      <div>
+        <div class="page-title">${isEditing ? 'Editar orçamento' : 'Novo orçamento'}</div>
+        <div class="page-desc">Defina o preço, a taxa do dólar e gere o orçamento em PDF ou Excel</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px;">
+      <div class="section-title">Dados do orçamento</div>
+      <div class="grid grid-4">
+        <div><label>Cliente</label><input id="f-cliente" value="${escapeHtml(d.cliente)}" placeholder="Nome do cliente / empresa"></div>
+        <div><label>Cidade de entrega</label><input id="f-cidade" value="${escapeHtml(d.cidade)}" placeholder="Ex: Foz do Iguaçu"></div>
+        <div><label>Taxa do dólar (R$)</label><input id="f-taxa-dolar" type="number" step="0.01" value="${d.taxaDolar}" placeholder="Ex: 5.35"></div>
+        <div><label>Taxa da cidade / frete (%, opcional)</label><input id="f-taxa-cidade" type="number" step="0.01" value="${d.taxaCidade}" placeholder="Ex: 5"></div>
+      </div>
+      <div style="margin-top:12px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+        <div class="checkbox-row">
+          <input type="checkbox" id="f-nf" ${d.incluirNF?'checked':''}>
+          <label style="margin:0;">Incluir Nota Fiscal</label>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <label style="margin:0;">Percentual da NF:</label>
+          <input id="f-nf-percent" type="number" step="0.1" min="0" value="${d.nfPercent}" style="width:80px;" ${d.incluirNF?'':'disabled'}>
+          <span style="color:var(--text-muted);font-size:13px;">%</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <div class="section-title" style="margin:0;">Itens</div>
+        <button class="btn-secondary" id="btn-add-item" style="display:inline-flex;align-items:center;gap:6px;">${ICONS.plus} Adicionar item</button>
+      </div>
+      ${d.itens.length ? `
+      <div style="overflow-x:auto;">
+      <table>
+        <thead><tr>
+          <th style="min-width:220px;">Produto</th>
+          <th class="right">Qtd</th>
+          <th class="right">Preço USD (editável)</th>
+          <th class="right">Subtotal USD</th>
+          <th></th>
+        </tr></thead>
+        <tbody>
+          ${d.itens.map((it,idx)=>{
+            const calc = calcLine(it);
+            return `
+            <tr>
+              <td>
+                <input data-idx="${idx}" class="item-produto-input mono" autocomplete="off" value="${it.codigo ? escapeHtml(it.codigo+' — '+it.nome) : ''}" placeholder="Buscar produto...">
+              </td>
+              <td><input type="number" min="0" step="1" class="item-qtd right mono" data-idx="${idx}" value="${it.quantidade}"></td>
+              <td><input type="number" min="0" step="0.01" class="item-preco right mono" data-idx="${idx}" value="${it.precoMinUsd.toFixed(2)}" title="Catálogo: ${fmtUSD(it.precoCatalogo!==undefined?it.precoCatalogo:it.precoMinUsd)}. Edite para aplicar desconto/ajuste manual."></td>
+              <td class="right mono" id="st-${idx}">${fmtUSD(calc.subtotalUsd)}</td>
+              <td class="center"><button class="icon-btn danger item-remove" data-idx="${idx}">${ICONS.trash}</button></td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+      </div>
+      ` : emptyState('Nenhum item adicionado. Clique em "Adicionar item" para começar.')}
+    </div>
+
+    <div class="grid grid-2">
+      <div></div>
+      <div class="totals-box" id="totals-box">
+        ${buildTotaisHTML(d, totais)}
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap;">
+      <button class="btn-primary" id="btn-salvar-orcamento">${isEditing ? 'Salvar alterações' : 'Salvar orçamento'}</button>
+      <button class="btn-secondary" id="btn-export-pdf" style="display:inline-flex;align-items:center;gap:6px;">${ICONS.pdf} Exportar PDF</button>
+      <button class="btn-secondary" id="btn-export-xlsx" style="display:inline-flex;align-items:center;gap:6px;">${ICONS.xlsx} Exportar Excel</button>
+      ${isEditing ? `<button class="btn-ghost" id="btn-cancelar-edicao">Cancelar edição</button>` : ''}
+    </div>
+  `;
+}
+
+/* ===================== HISTÓRICO ===================== */
+function viewHistorico(){
+  const list = [...state.orcamentos].sort((a,b)=>b.criadoEm-a.criadoEm);
+  return `
+    <div class="page-header">
+      <div>
+        <div class="page-title">Histórico de orçamentos</div>
+        <div class="page-desc">${list.length} orçamento(s) salvos</div>
+      </div>
+    </div>
+    <div class="card">
+      ${list.length ? `
+      <div style="overflow-x:auto;">
+      <table>
+        <thead><tr>
+          <th>Cliente</th><th>Cidade</th><th>Data</th><th class="right">Itens</th><th class="right">Total USD</th><th class="right">Total final (BRL)</th><th></th>
+        </tr></thead>
+        <tbody>
+          ${list.map(o=>`
+            <tr>
+              <td>${escapeHtml(o.cliente||'Sem nome')}</td>
+              <td>${escapeHtml(o.cidade||'-')}</td>
+              <td class="mono">${new Date(o.criadoEm).toLocaleDateString('pt-BR')}</td>
+              <td class="right mono">${o.itens.length}</td>
+              <td class="right mono">${fmtUSD(o.totalUsd)}</td>
+              <td class="right mono">${fmtBRL(o.totalFinal)}</td>
+              <td class="center" style="white-space:nowrap;">
+                <button class="icon-btn hist-view" data-id="${o.id}" title="Abrir">${ICONS.eye}</button>
+                <button class="icon-btn hist-pdf" data-id="${o.id}" title="PDF">${ICONS.pdf}</button>
+                <button class="icon-btn hist-xlsx" data-id="${o.id}" title="Excel">${ICONS.xlsx}</button>
+                <button class="icon-btn danger hist-delete" data-id="${o.id}" title="Excluir">${ICONS.trash}</button>
+              </td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+      </div>` : emptyState('Nenhum orçamento criado ainda.')}
+    </div>
+  `;
+}
+
+/* ===================== SINCRONIZAÇÃO ===================== */
+function viewSync(){
+  const {token, gistId} = getGhCreds();
+  const connected = hasGhSync();
+  const statusLabel = {idle:'', syncing:'Sincronizando…', ok:'Sincronizado ✓', error:'Falha na última sincronização ⚠'}[cloudSyncStatus] || '';
+  const statusColor = cloudSyncStatus === 'error' ? 'var(--danger)' : cloudSyncStatus === 'ok' ? 'var(--teal)' : 'var(--text-muted)';
+
+  return `
+    <div class="page-header">
+      <div>
+        <div class="page-title">Sincronização entre dispositivos</div>
+        <div class="page-desc">Use o mesmo Token e Gist ID do GitHub no celular, no computador ou em outro navegador para manter o catálogo e os orçamentos sempre iguais</div>
+      </div>
+    </div>
+
+    ${connected ? `
+    <div class="card" style="margin-bottom:16px;">
+      <div class="section-title">Sincronização ativa (via GitHub Gist)</div>
+      <div style="font-size:13px;color:var(--text-muted);margin-bottom:14px;">Use este mesmo Token e Gist ID nos outros dispositivos, em "Já tenho um Gist".</div>
+      <div class="grid grid-2" style="margin-bottom:4px;">
+        <div>
+          <label>Personal Access Token</label>
+          <input class="mono" value="${escapeHtml(maskToken(token))}" readonly>
+        </div>
+        <div>
+          <label>Gist ID</label>
+          <div style="display:flex;gap:8px;">
+            <input class="mono" id="sync-code-display" value="${escapeHtml(gistId)}" readonly>
+            <button class="btn-secondary" id="btn-copy-code">Copiar</button>
+          </div>
+        </div>
+      </div>
+      ${statusLabel ? `<div style="margin-top:8px;font-size:12px;color:${statusColor};">${statusLabel}</div>` : ''}
+      <div class="divider"></div>
+      <button class="btn-danger" id="btn-disconnect-sync">Parar sincronização (usar só este navegador)</button>
+    </div>
+    ` : `
+    <div class="card" style="margin-bottom:16px;">
+      <div class="section-title">Credenciais do GitHub</div>
+      <div style="font-size:13px;color:var(--text-muted);margin-bottom:14px;line-height:1.6;">
+        <strong>Importante:</strong> crie um token "classic" marcando <strong>apenas</strong> a permissão <strong>gist</strong> (nunca marque acesso a repositórios). Gere em
+        <a href="https://github.com/settings/tokens" target="_blank" style="color:var(--teal);">github.com/settings/tokens</a> → "Generate new token (classic)".
+      </div>
+      <div class="grid grid-2">
+        <div>
+          <label>GitHub Personal Access Token</label>
+          <input type="password" id="gh-token-input" class="mono" placeholder="ghp_..." value="${escapeHtml(token)}">
+        </div>
+        <div>
+          <label>Gist ID (deixe vazio para criar um novo)</label>
+          <input id="gh-gistid-input" class="mono" placeholder="Cole aqui se já tiver um Gist" value="${escapeHtml(gistId)}">
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;">
+        <button class="btn-primary" id="btn-create-auto-gist">Criar Novo Gist Automático</button>
+        <button class="btn-secondary" id="btn-connect-sync">Conectar a um Gist existente</button>
+      </div>
+    </div>
+    `}
+    ${lastSyncDebug.length ? `
+    <div class="card" style="margin-top:16px;border-color:var(--danger);">
+      <div class="section-title">Detalhes técnicos da última falha</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">Se isso continuar falhando, copie e envie este texto:</div>
+      <div class="mono" style="font-size:12px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:10px;white-space:pre-wrap;">${lastSyncDebug.map(d=>escapeHtml(d.provider+': '+d.error)).join('\n')}</div>
+    </div>` : ''}
+
+    <div class="card" style="margin-top:16px;">
+      <div class="section-title">Como funciona</div>
+      <div style="font-size:13px;color:var(--text-muted);line-height:1.6;">
+        O catálogo e os orçamentos são salvos dentro de um <strong>Gist privado</strong> da sua conta GitHub (um arquivo de texto simples, "tigers_backup.json"). Toda alteração no sistema atualiza esse Gist automaticamente, em poucos segundos.<br><br>
+        <strong>No primeiro dispositivo:</strong> cole seu Token e clique em "Criar Novo Gist Automático" — isso cria o Gist e preenche o Gist ID sozinho.<br>
+        <strong>Nos outros dispositivos:</strong> cole o mesmo Token e o mesmo Gist ID (mostrados aqui depois de criado) e clique em "Conectar a um Gist existente".<br><br>
+        Trate o Token como uma senha: qualquer pessoa que o tenha pode ler/editar os Gists da sua conta com a permissão "gist". Não compartilhe fora dos seus próprios dispositivos.
+      </div>
+    </div>
+  `;
+}
+
+
+function buildOrcamentoPayload(draft){
+  const totais = calcTotais(draft);
+  return {
+    id: state.editingOrcamentoId || uid(),
+    cliente: draft.cliente,
+    cidade: draft.cidade,
+    taxaDolar: Number(draft.taxaDolar)||0,
+    taxaCidade: Number(draft.taxaCidade)||0,
+    valorTaxaCidade: totais.valorTaxaCidade,
+    incluirNF: draft.incluirNF,
+    nfPercent: Number(draft.nfPercent)||0,
+    itens: draft.itens.map(it=>({...it, ...calcLine(it)})),
+    totalUsd: totais.totalUsd,
+    totalBrl: totais.totalBrl,
+    totalBrlFinal: totais.totalBrlFinal,
+    totalFinal: totais.totalFinal,
+    criadoEm: Date.now()
+  };
+}
+
+function downloadBlob(blob, filename){
+  try{
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(()=>{
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 800);
+  }catch(err){
+    try{
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      toast('Se o arquivo abrir numa nova aba, use o botão de compartilhar/salvar do seu navegador.');
+    }catch(err2){
+      toast('Não consegui gerar o arquivo neste navegador.', true);
+    }
+  }
+}
+
+function exportPDF(payload){
+  if(!payload.itens.length){ toast('Adicione ao menos um item antes de exportar.', true); return; }
+  if(!window.jspdf){ toast('O gerador de PDF ainda não carregou. Verifique sua internet e tente novamente em alguns segundos.', true); return; }
+  try{
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  doc.setFont('helvetica','bold');
+  doc.setFontSize(16);
+  doc.setTextColor(40,40,40);
+  doc.text('Tigers del Este', 14, 18);
+  doc.setFontSize(10);
+  doc.setFont('helvetica','normal');
+  doc.setTextColor(110,110,110);
+  doc.text('Orçamento comercial', 14, 24);
+  doc.text(`Cliente: ${payload.cliente || '-'}`, 14, 34);
+  doc.text(`Cidade de entrega: ${payload.cidade || '-'}`, 14, 40);
+  doc.text(`Data: ${new Date(payload.criadoEm).toLocaleDateString('pt-BR')}`, 14, 46);
+  doc.text(`Taxa do dólar: R$ ${payload.taxaDolar.toFixed(2)}`, 130, 34);
+  doc.text(`Nota Fiscal: ${payload.incluirNF ? 'Sim (+'+payload.nfPercent+'%)' : 'Não'}`, 130, 40);
+
+  doc.autoTable({
+    startY: 54,
+    head: [['Código','Produto','Qtd','Preço USD','Subtotal USD']],
+    body: payload.itens.map(it=>[
+      it.codigo, it.nome, it.quantidade,
+      fmtUSD(it.precoFinal), fmtUSD(it.subtotalUsd)
+    ]),
+    styles:{fontSize:8},
+    headStyles:{fillColor:[26,32,40], textColor:255},
+    theme:'striped'
+  });
+
+  const totalsRows = [
+    ['Total em USD', fmtUSD(payload.totalUsd)],
+    ['Conversão para BRL', fmtBRL(payload.totalBrl)]
+  ];
+  if(payload.taxaCidade) totalsRows.push([`Taxa da cidade / frete (${payload.taxaCidade}%)`, fmtBRL(payload.valorTaxaCidade)]);
+  if(payload.incluirNF) totalsRows.push([`Nota Fiscal (+${payload.nfPercent}%)`, fmtBRL(payload.totalBrlFinal*(payload.nfPercent/100))]);
+  totalsRows.push(['TOTAL FINAL', fmtBRL(payload.totalFinal)]);
+
+  doc.autoTable({
+    startY: doc.lastAutoTable.finalY + 8,
+    body: totalsRows,
+    theme: 'plain',
+    margin: { left: 100, right: 14 },
+    styles:{ fontSize: 10, cellPadding: {top:3, bottom:3, left:2, right:2} },
+    columnStyles: {
+      0: { halign: 'left' },
+      1: { halign: 'right' }
+    },
+    didParseCell: (hook)=>{
+      if(hook.row.index === totalsRows.length-1){
+        hook.cell.styles.fontStyle = 'bold';
+        hook.cell.styles.fontSize = 12;
+        hook.cell.styles.textColor = [20,20,20];
+      } else {
+        hook.cell.styles.textColor = [90,90,90];
+      }
+    }
+  });
+
+  let y = doc.lastAutoTable.finalY + 14;
+  doc.setFont('helvetica','normal');
+  doc.setFontSize(9);
+  doc.setTextColor(140);
+  doc.text('Tigers del Este — Ciudad del Este, Paraguay  ·  WhatsApp: +595 973 757761', 14, Math.max(y, 280));
+
+  const blob = doc.output('blob');
+  downloadBlob(blob, `orcamento_${(payload.cliente||'cliente').replace(/\s+/g,'_')}.pdf`);
+  }catch(err){
+    toast('Não consegui gerar o PDF. Tente novamente.', true);
+  }
+}
+
+function exportXLSX(payload){
+  if(!payload.itens.length){ toast('Adicione ao menos um item antes de exportar.', true); return; }
+  if(typeof XLSX === 'undefined'){ toast('O gerador de Excel ainda não carregou. Verifique sua internet e tente novamente em alguns segundos.', true); return; }
+  try{
+  const rows = payload.itens.map(it=>({
+    'Código': it.codigo,
+    'Produto': it.nome,
+    'Quantidade': it.quantidade,
+    'Preço USD': Number(it.precoFinal.toFixed(2)),
+    'Subtotal (USD)': Number(it.subtotalUsd.toFixed(2))
+  }));
+  rows.push({});
+  rows.push({'Código':'TOTAIS'});
+  rows.push({'Código':'Total USD', 'Produto': Number(payload.totalUsd.toFixed(2))});
+  rows.push({'Código':'Total BRL', 'Produto': Number(payload.totalBrl.toFixed(2))});
+  if(payload.taxaCidade) rows.push({'Código':`Taxa cidade/frete (${payload.taxaCidade}%)`, 'Produto': Number(payload.valorTaxaCidade.toFixed(2))});
+  if(payload.incluirNF) rows.push({'Código':`Nota Fiscal (+${payload.nfPercent}%)`, 'Produto': Number((payload.totalBrlFinal*(payload.nfPercent/100)).toFixed(2))});
+  rows.push({'Código':'TOTAL FINAL (BRL)', 'Produto': Number(payload.totalFinal.toFixed(2))});
+
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Orçamento');
+  const wbout = XLSX.write(wb, {bookType:'xlsx', type:'array'});
+  const blob = new Blob([wbout], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  downloadBlob(blob, `orcamento_${(payload.cliente||'cliente').replace(/\s+/g,'_')}.xlsx`);
+  }catch(err){
+    toast('Não consegui gerar o Excel. Tente novamente.', true);
+  }
+}
+
+function refreshTotaisELinhas(){
+  const d = state.draft;
+  d.itens.forEach((it,idx)=>{
+    const calc = calcLine(it);
+    const st = document.getElementById('st-'+idx); if(st) st.textContent = fmtUSD(calc.subtotalUsd);
+  });
+  const totalsBox = document.getElementById('totals-box');
+  if(totalsBox) totalsBox.innerHTML = buildTotaisHTML(d, calcTotais(d));
+}
+
+/* ===================== SELETOR DE PRODUTO (dropdown customizado) ===================== */
+let activeProdutoDropdownIdx = null;
+
+function openProdutoDropdown(idx, inputEl){
+  activeProdutoDropdownIdx = idx;
+  positionProdutoDropdown(inputEl);
+  filterProdutoDropdown(idx, inputEl.value);
+}
+
+function positionProdutoDropdown(inputEl){
+  const dd = document.getElementById('produto-dropdown');
+  if(!dd || !inputEl) return;
+  const rect = inputEl.getBoundingClientRect();
+  const spaceBelow = window.innerHeight - rect.bottom;
+  const maxHeight = Math.min(260, Math.max(120, spaceBelow - 12));
+  dd.style.left = rect.left + 'px';
+  dd.style.width = rect.width + 'px';
+  dd.style.maxHeight = maxHeight + 'px';
+  if(spaceBelow < 140 && rect.top > 140){
+    dd.style.top = (rect.top - Math.min(260, rect.top - 12)) + 'px';
+  }else{
+    dd.style.top = (rect.bottom + 4) + 'px';
+  }
+}
+
+function filterProdutoDropdown(idx, query){
+  const dd = document.getElementById('produto-dropdown');
+  if(!dd) return;
+  const term = normalize(query);
+  const matches = state.produtos.filter(p=>
+    !term || normalize(p.codigo).includes(term) || normalize(p.nome).includes(term)
+  ).slice(0, 30);
+
+  if(!matches.length){
+    dd.innerHTML = `<div class="dd-empty">Nenhum produto encontrado${term ? ' para "'+escapeHtml(query)+'"' : ''}.</div>`;
+  }else{
+    dd.innerHTML = matches.map(p=>`
+      <div class="dd-item" data-codigo="${escapeHtml(p.codigo)}">
+        <span class="dd-codigo">${escapeHtml(p.codigo)} · estoque: ${p.estoque}</span>
+        ${escapeHtml(p.nome)}
+      </div>`).join('');
+    dd.querySelectorAll('.dd-item').forEach(el=>{
+      el.addEventListener('click', ()=>{
+        selectProdutoForItem(idx, el.getAttribute('data-codigo'));
+      });
+    });
+  }
+  dd.classList.remove('hidden');
+}
+
+function selectProdutoForItem(idx, codigo){
+  const p = state.produtos.find(pp=>pp.codigo===codigo);
+  if(!p){ toast('Produto não encontrado no catálogo.', true); return; }
+  state.draft.itens[idx] = {...state.draft.itens[idx], codigo:p.codigo, nome:p.nome, categoria:p.categoria, precoMinUsd:p.precoMinUsd, precoCatalogo:p.precoMinUsd};
+  closeProdutoDropdown();
+  render();
+}
+
+function closeProdutoDropdown(){
+  activeProdutoDropdownIdx = null;
+  const dd = document.getElementById('produto-dropdown');
+  if(dd) dd.classList.add('hidden');
+}
+
+// Fecha o dropdown ao clicar fora ou rolar a página — registrado uma única vez.
+window.addEventListener('click', (e)=>{
+  const dd = document.getElementById('produto-dropdown');
+  if(!dd || dd.classList.contains('hidden')) return;
+  if(dd.contains(e.target) || e.target.classList.contains('item-produto-input')) return;
+  closeProdutoDropdown();
+});
+window.addEventListener('scroll', ()=>{ closeProdutoDropdown(); }, true);
+window.addEventListener('resize', ()=>{ closeProdutoDropdown(); });
+
+/* ===================== HANDLERS ===================== */
+function attachHandlers(){
+  // Import
+  const importInput = document.getElementById('import-input');
+  if(importInput){
+    importInput.addEventListener('change', (e)=>{
+      const file = e.target.files[0];
+      if(file) handleExcelImport(file);
+    });
+  }
+
+  // Produtos search/filter
+  const ps = document.getElementById('produto-search');
+  if(ps) ps.addEventListener('input', (e)=>{
+    state.produtoSearch = e.target.value;
+    clearTimeout(window.__searchDebounce);
+    window.__searchDebounce = setTimeout(()=>{
+      render();
+      const again = document.getElementById('produto-search');
+      if(again){ again.focus(); const p = state.produtoSearch.length; try{ again.setSelectionRange(p,p); }catch(_){} }
+    }, 180);
+  });
+  const pc = document.getElementById('produto-categoria-filtro');
+  if(pc) pc.addEventListener('change', (e)=>{ state.produtoCategoriaFiltro = e.target.value; render(); });
+  const reclassBtn = document.getElementById('btn-reclassificar');
+  if(reclassBtn) reclassBtn.addEventListener('click', ()=>{
+    let count = 0;
+    state.produtos.forEach(p=>{
+      if(!p.categoria || p.categoria === 'Outros' || p.categoria === 'Sem categoria'){
+        p.categoria = detectCategoria(p.codigo, p.nome);
+        count++;
+      }
+    });
+    DB.set('produtos', state.produtos);
+    toast(count ? `${count} produto(s) reclassificado(s).` : 'Nenhum produto pendente de classificação.');
+    render();
+  });
+  document.querySelectorAll('.produto-categoria-input').forEach(el=>{
+    el.addEventListener('change', (e)=>{
+      const codigo = e.target.getAttribute('data-codigo');
+      const p = state.produtos.find(pp=>pp.codigo===codigo);
+      if(p){
+        p.categoria = e.target.value.trim() || 'Outros';
+        DB.set('produtos', state.produtos);
+      }
+      render();
+    });
+  });
+
+  // Orçamento header fields — texto simples (sem recálculo, sem re-render)
+  bindTextField('f-cliente','cliente');
+  bindTextField('f-cidade','cidade');
+  // Campos numéricos que afetam os totais — atualização parcial (sem reconstruir a página)
+  bindCalcField('f-taxa-dolar','taxaDolar');
+  bindCalcField('f-taxa-cidade','taxaCidade');
+  const nf = document.getElementById('f-nf');
+  if(nf) nf.addEventListener('change', (e)=>{
+    state.draft.incluirNF = e.target.checked;
+    const pctInput = document.getElementById('f-nf-percent');
+    if(pctInput) pctInput.disabled = !e.target.checked;
+    refreshTotaisELinhas();
+  });
+  bindCalcField('f-nf-percent','nfPercent');
+
+  // Add item
+  const addBtn = document.getElementById('btn-add-item');
+  if(addBtn) addBtn.addEventListener('click', ()=>{
+    state.draft.itens.push({codigo:'',nome:'',categoria:'',precoMinUsd:0,quantidade:1});
+    render();
+  });
+
+  // Item rows
+  document.querySelectorAll('.item-produto-input').forEach(el=>{
+    const idx = Number(el.getAttribute('data-idx'));
+    el.addEventListener('focus', (e)=> openProdutoDropdown(idx, e.target));
+    el.addEventListener('input', (e)=>{
+      if(activeProdutoDropdownIdx !== idx) openProdutoDropdown(idx, e.target);
+      else { positionProdutoDropdown(e.target); filterProdutoDropdown(idx, e.target.value); }
+    });
+  });
+  document.querySelectorAll('.item-qtd').forEach(el=>{
+    el.addEventListener('input', (e)=>{
+      const idx = Number(e.target.getAttribute('data-idx'));
+      state.draft.itens[idx].quantidade = Number(e.target.value)||0;
+      refreshTotaisELinhas();
+    });
+  });
+  document.querySelectorAll('.item-preco').forEach(el=>{
+    el.addEventListener('input', (e)=>{
+      const idx = Number(e.target.getAttribute('data-idx'));
+      state.draft.itens[idx].precoMinUsd = Number(e.target.value)||0;
+      refreshTotaisELinhas();
+    });
+  });
+  document.querySelectorAll('.item-remove').forEach(el=>{
+    el.addEventListener('click', (e)=>{
+      const idx = Number(e.currentTarget.getAttribute('data-idx'));
+      state.draft.itens.splice(idx,1);
+      render();
+    });
+  });
+
+  // Save / export
+  const saveBtn = document.getElementById('btn-salvar-orcamento');
+  if(saveBtn) saveBtn.addEventListener('click', salvarOrcamento);
+  const pdfBtn = document.getElementById('btn-export-pdf');
+  if(pdfBtn) pdfBtn.addEventListener('click', ()=> exportPDF(buildOrcamentoPayload(state.draft)));
+  const xlsxBtn = document.getElementById('btn-export-xlsx');
+  if(xlsxBtn) xlsxBtn.addEventListener('click', ()=> exportXLSX(buildOrcamentoPayload(state.draft)));
+  const cancelBtn = document.getElementById('btn-cancelar-edicao');
+  if(cancelBtn) cancelBtn.addEventListener('click', ()=>{
+    state.editingOrcamentoId = null;
+    state.draft = {cliente:'',cidade:'',taxaDolar:'',taxaCidade:'',incluirNF:false,nfPercent:'15',itens:[]};
+    render();
+  });
+
+  // Histórico actions
+  document.querySelectorAll('.hist-view').forEach(el=>{
+    el.addEventListener('click', (e)=>{
+      const id = e.currentTarget.getAttribute('data-id');
+      const o = state.orcamentos.find(x=>x.id===id);
+      if(!o) return;
+      state.editingOrcamentoId = id;
+      state.draft = {
+        cliente:o.cliente, cidade:o.cidade, taxaDolar:o.taxaDolar, taxaCidade:o.taxaCidade,
+        incluirNF:o.incluirNF, nfPercent:o.nfPercent||15, itens: o.itens.map(it=>({codigo:it.codigo,nome:it.nome,categoria:it.categoria,precoMinUsd:it.precoMinUsd,quantidade:it.quantidade}))
+      };
+      state.view = 'orcamento';
+      render();
+    });
+  });
+  document.querySelectorAll('.hist-pdf').forEach(el=>{
+    el.addEventListener('click', (e)=>{
+      const id = e.currentTarget.getAttribute('data-id');
+      const o = state.orcamentos.find(x=>x.id===id);
+      if(o) exportPDF(o);
+    });
+  });
+  document.querySelectorAll('.hist-xlsx').forEach(el=>{
+    el.addEventListener('click', (e)=>{
+      const id = e.currentTarget.getAttribute('data-id');
+      const o = state.orcamentos.find(x=>x.id===id);
+      if(o) exportXLSX(o);
+    });
+  });
+  document.querySelectorAll('.hist-delete').forEach(el=>{
+    el.addEventListener('click', (e)=>{
+      const id = e.currentTarget.getAttribute('data-id');
+      state.orcamentos = state.orcamentos.filter(x=>x.id!==id);
+      DB.set('orcamentos', state.orcamentos);
+      render();
+      toast('Orçamento excluído.');
+    });
+  });
+
+  // Sincronização (GitHub Gist)
+  const btnCreateAutoGist = document.getElementById('btn-create-auto-gist');
+  if(btnCreateAutoGist) btnCreateAutoGist.addEventListener('click', createAutoGist);
+  const btnConnectSync = document.getElementById('btn-connect-sync');
+  if(btnConnectSync) btnConnectSync.addEventListener('click', connectGithubSync);
+  const btnDisconnectSync = document.getElementById('btn-disconnect-sync');
+  if(btnDisconnectSync) btnDisconnectSync.addEventListener('click', disconnectSync);
+  const btnGotoSync = document.getElementById('btn-goto-sync');
+  if(btnGotoSync) btnGotoSync.addEventListener('click', ()=>{ state.view = 'sync'; render(); });
+  const btnCopyCode = document.getElementById('btn-copy-code');
+  if(btnCopyCode) btnCopyCode.addEventListener('click', ()=>{
+    const el = document.getElementById('sync-code-display');
+    if(!el) return;
+    el.select();
+    try{
+      navigator.clipboard.writeText(el.value);
+      toast('Gist ID copiado.');
+    }catch(e){
+      try{ document.execCommand('copy'); toast('Gist ID copiado.'); }
+      catch(e2){ toast('Não consegui copiar. Selecione e copie manualmente.', true); }
+    }
+  });
+}
+
+function bindTextField(elId, key){
+  const el = document.getElementById(elId);
+  if(!el) return;
+  el.addEventListener('input', (e)=>{ state.draft[key] = e.target.value; });
+}
+
+function bindCalcField(elId, key){
+  const el = document.getElementById(elId);
+  if(!el) return;
+  el.addEventListener('input', (e)=>{
+    state.draft[key] = e.target.value;
+    refreshTotaisELinhas();
+  });
+}
+
+function salvarOrcamento(){
+  if(!state.draft.itens.length){ toast('Adicione ao menos um item antes de salvar.', true); return; }
+  if(!state.draft.taxaDolar){ toast('Informe a taxa do dólar.', true); return; }
+  const payload = buildOrcamentoPayload(state.draft);
+  if(state.editingOrcamentoId){
+    const idx = state.orcamentos.findIndex(o=>o.id===state.editingOrcamentoId);
+    if(idx>-1) state.orcamentos[idx] = {...payload, criadoEm: state.orcamentos[idx].criadoEm};
+  }else{
+    state.orcamentos.push(payload);
+  }
+  DB.set('orcamentos', state.orcamentos);
+  state.editingOrcamentoId = null;
+  state.draft = {cliente:'',cidade:'',taxaDolar:'',taxaCidade:'',incluirNF:false,nfPercent:'15',itens:[]};
+  toast('Orçamento salvo com sucesso.');
+  state.view = 'historico';
+  render();
+}
+
+/* ===================== INIT ===================== */
+async function init(){
+  const {token, gistId} = getGhCreds();
+  if(token && gistId){
+    try{
+      const data = await ghGetGist(token, gistId);
+      if(data){
+        state.produtos = Array.isArray(data.produtos) ? data.produtos : [];
+        state.orcamentos = Array.isArray(data.orcamentos) ? data.orcamentos : [];
+        localStorage.setItem('tigers_produtos', JSON.stringify(state.produtos));
+        localStorage.setItem('tigers_orcamentos', JSON.stringify(state.orcamentos));
+        cloudSyncStatus = 'ok';
+        render();
+        return;
+      }
+    }catch(e){
+      lastSyncDebug = [{provider:'github', error: (e && e.message) ? e.message : String(e)}];
+      /* sem internet ou Gist indisponível — usa a cópia local */
+    }
+  }
+  state.produtos = await DB.get('produtos', []);
+  state.orcamentos = await DB.get('orcamentos', []);
+  render();
+}
+init();
+</script>
+</body>
+</html>

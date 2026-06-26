@@ -369,7 +369,8 @@ let state = {
     taxaCidade: '',
     incluirNF: false,
     nfPercent: '15',
-    itens: [] // {codigo,nome,categoria,precoMinUsd,quantidade,margem}
+    itens: [], // {codigo,nome,categoria,precoMinUsd,quantidade}
+    comparacoes: [] // {id, solicitado, loading, resultado}
   },
   vendaDraft: null, // quando não-nulo, formulário de venda está aberto (novo ou edição)
   produtoSearch: '',
@@ -506,7 +507,7 @@ function renderNav(){
 
 function resetDraftIfNotEditing(){
   if(!state.editingOrcamentoId){
-    state.draft = {cliente:'',cidade:'',taxaDolar:'',taxaCidade:'',incluirNF:false,nfPercent:'15',itens:[]};
+    state.draft = {cliente:'',cidade:'',taxaDolar:'',taxaCidade:'',incluirNF:false,nfPercent:'15',itens:[],comparacoes:[]};
   }
 }
 
@@ -781,6 +782,70 @@ function calcTotais(draft){
   return {totalUsd, totalBrl, taxaCidadePercent, valorTaxaCidade, totalBrlFinal, nfPercent, totalFinal};
 }
 
+/* ===================== COMPARADOR DE PRODUTOS (IA) ===================== */
+async function compararProduto(idx){
+  const comp = state.draft.comparacoes[idx];
+  if(!comp || !comp.solicitado.trim()){ toast('Digite o produto que o cliente pediu.', true); return; }
+
+  comp.loading = true;
+  comp.resultado = null;
+  render();
+
+  const categoriaGuess = detectCategoria('', comp.solicitado);
+  let candidatos = state.produtos.filter(p=>p.categoria === categoriaGuess);
+  if(candidatos.length < 3) candidatos = state.produtos;
+  const catalogoResumo = candidatos.map(p=>`${p.codigo} | ${p.categoria} | ${p.nome} | estoque:${p.estoque} | USD ${p.precoMinUsd}`).join('\n');
+
+  const prompt = `Um cliente pediu este produto: "${comp.solicitado}"
+
+Aqui está uma lista de produtos do nosso catálogo (código | categoria | nome | estoque | preço USD):
+${catalogoResumo}
+
+Responda SOMENTE em JSON válido, sem texto antes ou depois, nesse formato exato:
+{
+  "especificacoes_solicitado": ["especificação 1", "especificação 2", "especificação 3", "especificação 4"],
+  "produto_equivalente_codigo": "CODIGO_DO_CATALOGO_ACIMA ou null se não houver equivalente razoável",
+  "motivo": "breve explicação (1-2 frases) de por que esse produto é equivalente, ou por que não há equivalente em estoque"
+}`;
+
+  try{
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1000,
+        messages: [{role:'user', content: prompt}]
+      })
+    });
+    const data = await res.json();
+    const textoResposta = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('');
+    const limpo = textoResposta.replace(/```json|```/g,'').trim();
+    const parsed = JSON.parse(limpo);
+    const produtoEncontrado = parsed.produto_equivalente_codigo ? state.produtos.find(p=>p.codigo===parsed.produto_equivalente_codigo) : null;
+    comp.resultado = {
+      especificacoes: parsed.especificacoes_solicitado || [],
+      produtoEncontrado: produtoEncontrado || null,
+      motivo: parsed.motivo || ''
+    };
+  }catch(e){
+    comp.resultado = {erro: true};
+    toast('Não consegui gerar a comparação agora. Tente novamente.', true);
+  }
+  comp.loading = false;
+  render();
+}
+
+function addComparadoToOrcamento(idx){
+  const comp = state.draft.comparacoes[idx];
+  const p = comp && comp.resultado && comp.resultado.produtoEncontrado;
+  if(!p){ toast('Nenhum produto equivalente para adicionar.', true); return; }
+  state.draft.itens.push({codigo:p.codigo, nome:p.nome, categoria:p.categoria, precoMinUsd:p.precoMinUsd, precoCatalogo:p.precoMinUsd, quantidade:1});
+  toast(`${p.nome} adicionado ao orçamento.`);
+  render();
+}
+
+
 function buildTotaisHTML(d, totais){
   return `
     <div class="totals-row"><span>Total em USD</span><span class="v">${fmtUSD(totais.totalUsd)}</span></div>
@@ -823,6 +888,47 @@ function viewOrcamento(){
           <span style="color:var(--text-muted);font-size:13px;">%</span>
         </div>
       </div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <div class="section-title" style="margin:0;">Comparador de Produtos</div>
+        <button class="btn-secondary" id="btn-add-comparacao" style="display:inline-flex;align-items:center;gap:6px;">${ICONS.plus} Adicionar comparação</button>
+      </div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">Cliente pediu um modelo específico? Digite-o e veja as especificações dele lado a lado com o que temos em estoque.</div>
+      ${d.comparacoes.length ? d.comparacoes.map((c,idx)=>`
+        <div class="card" style="margin-bottom:12px;padding:14px;">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+            <input class="comparacao-input" data-idx="${idx}" style="flex:1;min-width:220px;" value="${escapeHtml(c.solicitado)}" placeholder="Ex: Switch TP-Link TL-SG1024D 24 portas">
+            <button class="btn-secondary btn-comparar" data-idx="${idx}" ${c.loading?'disabled':''}>${c.loading ? 'Comparando...' : 'Comparar com estoque'}</button>
+            <button class="icon-btn danger comparacao-remove" data-idx="${idx}" title="Remover">${ICONS.trash}</button>
+          </div>
+          ${c.resultado ? (c.resultado.erro ? `
+            <div style="font-size:13px;color:var(--danger);">Não consegui gerar a comparação. Tente novamente.</div>
+          ` : `
+            <div class="grid grid-2">
+              <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:12px;">
+                <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">Solicitado pelo cliente</div>
+                <ul style="margin:0;padding-left:18px;font-size:13px;color:var(--text);line-height:1.6;">
+                  ${(c.resultado.especificacoes||[]).map(e=>`<li>${escapeHtml(e)}</li>`).join('') || '<li>Sem especificações reconhecidas.</li>'}
+                </ul>
+              </div>
+              <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:12px;">
+                <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">Disponível em nosso estoque</div>
+                ${c.resultado.produtoEncontrado ? `
+                  <div style="font-size:13px;"><strong>${escapeHtml(c.resultado.produtoEncontrado.nome)}</strong></div>
+                  <div class="mono" style="font-size:12px;color:var(--text-muted);margin:4px 0;">${escapeHtml(c.resultado.produtoEncontrado.codigo)} · estoque: ${c.resultado.produtoEncontrado.estoque} · ${fmtUSD(c.resultado.produtoEncontrado.precoMinUsd)}</div>
+                  <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">${escapeHtml(c.resultado.motivo||'')}</div>
+                  <button class="btn-primary btn-add-comparado" data-idx="${idx}" style="font-size:12px;padding:7px 12px;">Adicionar ao orçamento</button>
+                ` : `
+                  <div style="font-size:13px;color:var(--danger);margin-bottom:6px;">Não temos um equivalente em estoque.</div>
+                  <div style="font-size:12px;color:var(--text-muted);">${escapeHtml(c.resultado.motivo||'')}</div>
+                `}
+              </div>
+            </div>
+          `) : '<div style="font-size:12px;color:var(--text-muted);">Clique em "Comparar com estoque" para gerar a análise.</div>'}
+        </div>
+      `).join('') : emptyState('Nenhuma comparação adicionada. Clique em "Adicionar comparação" para começar.')}
     </div>
 
     <div class="card" style="margin-bottom:16px;">
@@ -1022,7 +1128,7 @@ function calcVendasStats(){
   const vendas = state.vendas;
   const totalUsd = vendas.reduce((s,v)=> s + (Number(v.valor)||0), 0);
   const novosIntegradores = vendas.filter(v=>v.novoIntegrador);
-  const atribuidasDiego = vendas.filter(v=>v.atribuidaDiego);
+  const ticketMedio = vendas.length ? totalUsd / vendas.length : 0;
 
   const porMes = {};
   vendas.forEach(v=>{
@@ -1032,6 +1138,14 @@ function calcVendasStats(){
     porMes[key].count++;
   });
   const mesesOrdenados = Object.keys(porMes).filter(k=>k!=='sem-data').sort();
+
+  let crescimentoPercent = null, mesAtualLabel = '', mesAnteriorLabel = '';
+  if(mesesOrdenados.length >= 2){
+    const atual = porMes[mesesOrdenados[mesesOrdenados.length-1]];
+    const anterior = porMes[mesesOrdenados[mesesOrdenados.length-2]];
+    mesAtualLabel = atual.label; mesAnteriorLabel = anterior.label;
+    crescimentoPercent = anterior.total > 0 ? ((atual.total - anterior.total) / anterior.total) * 100 : null;
+  }
 
   const porCategoria = {};
   vendas.forEach(v=>{
@@ -1052,7 +1166,34 @@ function calcVendasStats(){
     if(v.atribuidaDiego && v.obs) porCliente[key].nome = v.obs;
   });
 
-  return {totalUsd, novosIntegradores, atribuidasDiego, porMes, mesesOrdenados, porCategoria, porCliente};
+  const clientesComRede = Object.values(porCliente).filter(c=> Array.from(c.categorias).some(cat=>NETWORKING_CATS.includes(cat)));
+  const clientesComRedeECftv = clientesComRede.filter(c=> c.categorias.has(CFTV_CAT));
+  const penetracaoCftv = clientesComRede.length ? (clientesComRedeECftv.length / clientesComRede.length) * 100 : null;
+
+  const topCategoria = Object.entries(porCategoria).sort((a,b)=>b[1].total-a[1].total)[0];
+  const topCliente = Object.values(porCliente).sort((a,b)=>b.total-a.total)[0];
+
+  return {
+    totalUsd, novosIntegradores, ticketMedio, porMes, mesesOrdenados,
+    crescimentoPercent, mesAtualLabel, mesAnteriorLabel,
+    porCategoria, porCliente, clientesComRede, clientesComRedeECftv, penetracaoCftv,
+    topCategoria, topCliente
+  };
+}
+
+function gerarResumoExecutivo(stats){
+  if(!state.vendas.length) return 'Nenhuma venda registrada ainda — adicione vendas para gerar o resumo executivo.';
+  const partes = [];
+  if(stats.mesAtualLabel){
+    partes.push(`Em ${stats.mesAtualLabel}, as vendas totalizaram ${fmtUSD(stats.porMes[stats.mesesOrdenados[stats.mesesOrdenados.length-1]].total)}${stats.crescimentoPercent!==null ? `, ${stats.crescimentoPercent>=0?'um crescimento':'uma queda'} de ${Math.abs(stats.crescimentoPercent).toFixed(1)}% em relação a ${stats.mesAnteriorLabel}` : ''}.`);
+  }else{
+    partes.push(`O total vendido no período registrado é ${fmtUSD(stats.totalUsd)}.`);
+  }
+  if(stats.novosIntegradores.length) partes.push(`Foram captados ${stats.novosIntegradores.length} novo(s) integrador(es) (lead convertido em cliente) no período.`);
+  if(stats.topCategoria) partes.push(`A categoria mais vendida foi "${stats.topCategoria[0]}" (${fmtUSD(stats.topCategoria[1].total)}).`);
+  if(stats.topCliente) partes.push(`O maior cliente do período foi ${stats.topCliente.nome}, com ${fmtUSD(stats.topCliente.total)} em compras.`);
+  if(stats.penetracaoCftv !== null) partes.push(`Da base de integradores que compram equipamento de rede, ${stats.penetracaoCftv.toFixed(0)}% já adquiriu também produtos CFTV Hikvision — ${stats.penetracaoCftv < 50 ? 'ainda há uma grande oportunidade de cross-sell' : 'a penetração da linha CFTV já é relevante'} nessa base.`);
+  return partes.join(' ');
 }
 
 function gerarSugestoes(porCliente){
@@ -1115,7 +1256,24 @@ function viewVendas(){
       <div class="card"><div class="stat-label">Total vendido</div><div class="stat-value amber">${fmtUSD(stats.totalUsd)}</div></div>
       <div class="card"><div class="stat-label">Notas registradas</div><div class="stat-value">${state.vendas.length}</div></div>
       <div class="card"><div class="stat-label">Novos integradores captados</div><div class="stat-value teal">${stats.novosIntegradores.length}</div></div>
-      <div class="card"><div class="stat-label">Vendas captadas por você</div><div class="stat-value" style="font-size:16px;">${fmtUSD(stats.atribuidasDiego.reduce((s,v)=>s+(Number(v.valor)||0),0))}</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px;">${stats.atribuidasDiego.length} nota(s)</div></div>
+    <div class="grid grid-4" style="margin-bottom:14px;">
+      <div class="card">
+        <div class="stat-label">Total vendido</div>
+        <div class="stat-value amber">${fmtUSD(stats.totalUsd)}</div>
+        ${stats.crescimentoPercent!==null ? `<div style="font-size:12px;margin-top:4px;color:${stats.crescimentoPercent>=0?'var(--teal)':'var(--danger)'};">${stats.crescimentoPercent>=0?'▲':'▼'} ${Math.abs(stats.crescimentoPercent).toFixed(1)}% vs. mês anterior</div>` : ''}
+      </div>
+      <div class="card"><div class="stat-label">Ticket médio</div><div class="stat-value">${fmtUSD(stats.ticketMedio)}</div><div style="font-size:11px;color:var(--text-muted);margin-top:4px;">${state.vendas.length} nota(s)</div></div>
+      <div class="card"><div class="stat-label">Novos integradores captados</div><div class="stat-value teal">${stats.novosIntegradores.length}</div></div>
+      <div class="card">
+        <div class="stat-label">Penetração CFTV na base de redes</div>
+        <div class="stat-value" style="font-size:${stats.penetracaoCftv!==null?'26px':'15px'};color:${stats.penetracaoCftv!==null && stats.penetracaoCftv<50 ? 'var(--stripe)' : 'var(--text)'};">${stats.penetracaoCftv!==null ? stats.penetracaoCftv.toFixed(0)+'%' : 'Sem dados'}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">${stats.clientesComRedeECftv.length}/${stats.clientesComRede.length} cliente(s) de rede já compram CFTV</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:18px;">
+      <div class="section-title">Resumo executivo</div>
+      <div style="font-size:13px;color:var(--text-muted);line-height:1.7;">${escapeHtml(gerarResumoExecutivo(stats))}</div>
     </div>
 
     ${draft ? `
@@ -1652,7 +1810,7 @@ function attachHandlers(){
   const cancelBtn = document.getElementById('btn-cancelar-edicao');
   if(cancelBtn) cancelBtn.addEventListener('click', ()=>{
     state.editingOrcamentoId = null;
-    state.draft = {cliente:'',cidade:'',taxaDolar:'',taxaCidade:'',incluirNF:false,nfPercent:'15',itens:[]};
+    state.draft = {cliente:'',cidade:'',taxaDolar:'',taxaCidade:'',incluirNF:false,nfPercent:'15',itens:[],comparacoes:[]};
     render();
   });
 
@@ -1777,6 +1935,38 @@ function attachHandlers(){
     const file = e.target.files[0];
     if(file) handleVendaExcelImport(file);
   });
+
+  // Comparador de produtos
+  const btnAddComparacao = document.getElementById('btn-add-comparacao');
+  if(btnAddComparacao) btnAddComparacao.addEventListener('click', ()=>{
+    state.draft.comparacoes.push({id:uid(), solicitado:'', loading:false, resultado:null});
+    render();
+  });
+  document.querySelectorAll('.comparacao-input').forEach(el=>{
+    el.addEventListener('input', (e)=>{
+      const idx = Number(e.target.getAttribute('data-idx'));
+      state.draft.comparacoes[idx].solicitado = e.target.value;
+    });
+  });
+  document.querySelectorAll('.btn-comparar').forEach(el=>{
+    el.addEventListener('click', (e)=>{
+      const idx = Number(e.currentTarget.getAttribute('data-idx'));
+      compararProduto(idx);
+    });
+  });
+  document.querySelectorAll('.comparacao-remove').forEach(el=>{
+    el.addEventListener('click', (e)=>{
+      const idx = Number(e.currentTarget.getAttribute('data-idx'));
+      state.draft.comparacoes.splice(idx,1);
+      render();
+    });
+  });
+  document.querySelectorAll('.btn-add-comparado').forEach(el=>{
+    el.addEventListener('click', (e)=>{
+      const idx = Number(e.currentTarget.getAttribute('data-idx'));
+      addComparadoToOrcamento(idx);
+    });
+  });
 }
 
 function bindTextField(elId, key){
@@ -1806,7 +1996,7 @@ function salvarOrcamento(){
   }
   DB.set('orcamentos', state.orcamentos);
   state.editingOrcamentoId = null;
-  state.draft = {cliente:'',cidade:'',taxaDolar:'',taxaCidade:'',incluirNF:false,nfPercent:'15',itens:[]};
+  state.draft = {cliente:'',cidade:'',taxaDolar:'',taxaCidade:'',incluirNF:false,nfPercent:'15',itens:[],comparacoes:[]};
   toast('Orçamento salvo com sucesso.');
   state.view = 'historico';
   render();

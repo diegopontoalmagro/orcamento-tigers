@@ -125,6 +125,13 @@ tr:hover td{background:rgba(255,255,255,.015);}
 .produto-dropdown .dd-item .dd-codigo{color:var(--amber);font-family:var(--mono);font-size:11px;display:block;margin-bottom:2px;}
 .produto-dropdown .dd-empty{padding:12px;font-size:13px;color:var(--text-muted);}
 
+.chip-list{display:flex;flex-wrap:wrap;gap:6px;max-height:140px;overflow-y:auto;padding:2px;}
+.chip{padding:6px 11px;border-radius:20px;font-size:12px;background:var(--surface-3);color:var(--text-muted);border:1px solid var(--border);cursor:pointer;user-select:none;transition:background .12s,color .12s;}
+.chip:hover{background:#2c3542;}
+.chip.selected{background:var(--amber);color:#1a1305;border-color:var(--amber);font-weight:600;}
+.opp-card{border-left:3px solid var(--teal);}
+.opp-card.hot{border-left-color:var(--stripe);}
+
 .hidden{display:none !important;}
 ::-webkit-scrollbar{height:8px;width:8px;}
 ::-webkit-scrollbar-thumb{background:var(--surface-3);border-radius:8px;}
@@ -276,7 +283,7 @@ function scheduleCloudSync(){
   cloudSyncTimer = setTimeout(async ()=>{
     cloudSyncStatus = 'syncing';
     try{
-      await ghUpdateGist(token, gistId, {produtos: state.produtos, orcamentos: state.orcamentos, atualizadoEm: Date.now()});
+      await ghUpdateGist(token, gistId, {produtos: state.produtos, orcamentos: state.orcamentos, vendas: state.vendas, atualizadoEm: Date.now()});
       cloudSyncStatus = 'ok';
     }catch(e){
       cloudSyncStatus = 'error';
@@ -293,7 +300,7 @@ async function createAutoGist(){
   toast('Criando Gist no GitHub...');
   lastSyncDebug = [];
   try{
-    const id = await ghCreateGist(token, {produtos: state.produtos, orcamentos: state.orcamentos, atualizadoEm: Date.now()});
+    const id = await ghCreateGist(token, {produtos: state.produtos, orcamentos: state.orcamentos, vendas: state.vendas, atualizadoEm: Date.now()});
     localStorage.setItem('tigers_gh_token', token);
     localStorage.setItem('tigers_gh_gist_id', id);
     cloudSyncStatus = 'ok';
@@ -318,10 +325,12 @@ async function connectGithubSync(){
     const data = await ghGetGist(token, gistId);
     state.produtos = Array.isArray(data.produtos) ? data.produtos : [];
     state.orcamentos = Array.isArray(data.orcamentos) ? data.orcamentos : [];
+    state.vendas = Array.isArray(data.vendas) ? data.vendas : [];
     localStorage.setItem('tigers_gh_token', token);
     localStorage.setItem('tigers_gh_gist_id', gistId);
     localStorage.setItem('tigers_produtos', JSON.stringify(state.produtos));
     localStorage.setItem('tigers_orcamentos', JSON.stringify(state.orcamentos));
+    localStorage.setItem('tigers_vendas', JSON.stringify(state.vendas));
     cloudSyncStatus = 'ok';
     toast('Conectado! Dados sincronizados via GitHub Gist.');
     state.view = 'dashboard';
@@ -352,6 +361,7 @@ let state = {
   view: 'dashboard',
   produtos: [],
   orcamentos: [],
+  vendas: [],
   draft: {
     cliente: '',
     cidade: '',
@@ -361,10 +371,15 @@ let state = {
     nfPercent: '15',
     itens: [] // {codigo,nome,categoria,precoMinUsd,quantidade,margem}
   },
+  vendaDraft: null, // quando não-nulo, formulário de venda está aberto (novo ou edição)
   produtoSearch: '',
   produtoCategoriaFiltro: '',
   editingOrcamentoId: null
 };
+
+function novoVendaDraft(){
+  return { id:null, notaFiscal:'', codigoCliente:'', nomeCliente:'', diaCompra:'', valor:'', obs:'', categorias:[], novoIntegrador:false, atribuidaDiego:false };
+}
 
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 
@@ -459,12 +474,15 @@ const ICONS = {
   xlsx: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13l3 4M12 13l-3 4"/></svg>',
   search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>',
   eye: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>',
-  sync: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 16v4h4M21 8V4h-4"/></svg>'
+  sync: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 16v4h4M21 8V4h-4"/></svg>',
+  vendas: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18"/><path d="M7 15l4-5 4 3 5-7"/></svg>',
+  star: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.7 6.9-6.3-3.8-6.3 3.8 1.7-6.9-5.4-4.7 7.1-.6z"/></svg>'
 };
 
 /* ===================== NAV ===================== */
 const NAV_ITEMS = [
   {id:'dashboard', label:'Painel', icon:'dashboard'},
+  {id:'vendas', label:'Vendas', icon:'vendas'},
   {id:'produtos', label:'Produtos', icon:'produtos'},
   {id:'orcamento', label:'Novo Orçamento', icon:'orcamento'},
   {id:'historico', label:'Histórico', icon:'historico'},
@@ -501,6 +519,7 @@ function render(){
   else if(state.view==='orcamento') main.innerHTML = viewOrcamento();
   else if(state.view==='historico') main.innerHTML = viewHistorico();
   else if(state.view==='sync') main.innerHTML = viewSync();
+  else if(state.view==='vendas') main.innerHTML = viewVendas();
   attachHandlers();
 }
 
@@ -976,6 +995,319 @@ function viewSync(){
 }
 
 
+/* ===================== VENDAS (DASHBOARD COMERCIAL) ===================== */
+const NETWORKING_CATS = [
+  'Redes — Access Point','Redes — Switch','Redes — Roteador','Redes — ONT/ONU',
+  'Redes — OLT','Redes — Fibra Óptica e Acessórios','Redes — Repetidor/Extensor',
+  'Redes — Adaptadores e Acessórios','Redes — Modem','Redes — Antena','Redes — Cabos e Conectores',
+  'Redes — Infraestrutura e Energia'
+];
+const CFTV_CAT = 'CFTV — Câmeras e Gravadores';
+
+function vendaClienteDisplay(v){
+  return (v.atribuidaDiego && v.obs) ? v.obs : (v.nomeCliente || 'Sem nome');
+}
+function vendaClienteKey(v){
+  return v.codigoCliente || normalize(vendaClienteDisplay(v));
+}
+function vendaMesLabel(diaCompra){
+  if(!diaCompra) return 'Sem data';
+  const [y,m] = diaCompra.split('-');
+  if(!y || !m) return 'Sem data';
+  const meses = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  return `${meses[Number(m)-1]}/${y}`;
+}
+
+function calcVendasStats(){
+  const vendas = state.vendas;
+  const totalUsd = vendas.reduce((s,v)=> s + (Number(v.valor)||0), 0);
+  const novosIntegradores = vendas.filter(v=>v.novoIntegrador);
+  const atribuidasDiego = vendas.filter(v=>v.atribuidaDiego);
+
+  const porMes = {};
+  vendas.forEach(v=>{
+    const key = (v.diaCompra||'').slice(0,7) || 'sem-data';
+    if(!porMes[key]) porMes[key] = {label: vendaMesLabel(v.diaCompra), total:0, count:0};
+    porMes[key].total += Number(v.valor)||0;
+    porMes[key].count++;
+  });
+  const mesesOrdenados = Object.keys(porMes).filter(k=>k!=='sem-data').sort();
+
+  const porCategoria = {};
+  vendas.forEach(v=>{
+    (v.categorias||[]).forEach(cat=>{
+      if(!porCategoria[cat]) porCategoria[cat] = {total:0, count:0};
+      porCategoria[cat].total += Number(v.valor)||0;
+      porCategoria[cat].count++;
+    });
+  });
+
+  const porCliente = {};
+  vendas.forEach(v=>{
+    const key = vendaClienteKey(v);
+    if(!porCliente[key]) porCliente[key] = {nome: vendaClienteDisplay(v), codigo: v.codigoCliente, total:0, count:0, categorias:new Set()};
+    porCliente[key].total += Number(v.valor)||0;
+    porCliente[key].count++;
+    (v.categorias||[]).forEach(c=>porCliente[key].categorias.add(c));
+    if(v.atribuidaDiego && v.obs) porCliente[key].nome = v.obs;
+  });
+
+  return {totalUsd, novosIntegradores, atribuidasDiego, porMes, mesesOrdenados, porCategoria, porCliente};
+}
+
+function gerarSugestoes(porCliente){
+  const lista = Object.values(porCliente).map(c=>{
+    const cats = Array.from(c.categorias);
+    const temRede = cats.some(cat=>NETWORKING_CATS.includes(cat));
+    const temCFTV = cats.includes(CFTV_CAT);
+    let sugestao = null, prioridade = 0;
+    if(temRede && !temCFTV){
+      sugestao = 'Já compra equipamentos de rede (AP/Switch/Roteador) mas ainda não comprou CFTV — ótimo alvo para oferecer a nova linha Hikvision.';
+      prioridade = 3;
+    }else if(temCFTV && !temRede){
+      sugestao = 'Já compra CFTV mas ainda não equipamentos de rede — oferecer AP/Switch Huawei eKit ou TP-Link Omada.';
+      prioridade = 2;
+    }else if(!cats.length){
+      sugestao = 'Nenhuma categoria registrada nas vendas deste cliente ainda — preencha as categorias para gerar sugestões.';
+      prioridade = 0;
+    }else if(temRede && temCFTV){
+      sugestao = 'Já compra rede e CFTV — cliente maduro; bom candidato para programa de parceria/fidelidade.';
+      prioridade = 1;
+    }
+    return {...c, categorias: cats, sugestao, prioridade};
+  });
+  return lista.sort((a,b)=> b.prioridade - a.prioridade || b.total - a.total);
+}
+
+function renderCategoryChips(selected){
+  const cats = categoriasDerivadas();
+  if(!cats.length) return '<div style="font-size:12px;color:var(--text-muted);">Importe produtos no catálogo primeiro para ter categorias disponíveis.</div>';
+  return `<div class="chip-list">${cats.map(c=>`
+    <div class="chip venda-chip ${selected.includes(c)?'selected':''}" data-cat="${escapeHtml(c)}">${escapeHtml(c)}</div>
+  `).join('')}</div>`;
+}
+
+function viewVendas(){
+  const stats = calcVendasStats();
+  const sugestoes = gerarSugestoes(stats.porCliente);
+  const maxCat = Math.max(1, ...Object.values(stats.porCategoria).map(c=>c.total));
+  const maxMes = Math.max(1, ...stats.mesesOrdenados.map(k=>stats.porMes[k].total));
+  const draft = state.vendaDraft;
+
+  const listaVendas = [...state.vendas].sort((a,b)=> (b.diaCompra||'').localeCompare(a.diaCompra||''));
+
+  return `
+    <div class="page-header">
+      <div>
+        <div class="page-title">Vendas</div>
+        <div class="page-desc">Registre suas vendas, acompanhe o crescimento e veja oportunidades de venda por cliente</div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <label class="btn-secondary" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;">
+          ${ICONS.upload} Importar Excel
+          <input type="file" id="venda-import-input" accept=".xlsx,.xls,.csv" class="hidden">
+        </label>
+        <button class="btn-primary" id="btn-add-venda" style="display:inline-flex;align-items:center;gap:6px;">${ICONS.plus} Adicionar venda</button>
+      </div>
+    </div>
+
+    <div class="grid grid-4" style="margin-bottom:18px;">
+      <div class="card"><div class="stat-label">Total vendido</div><div class="stat-value amber">${fmtUSD(stats.totalUsd)}</div></div>
+      <div class="card"><div class="stat-label">Notas registradas</div><div class="stat-value">${state.vendas.length}</div></div>
+      <div class="card"><div class="stat-label">Novos integradores captados</div><div class="stat-value teal">${stats.novosIntegradores.length}</div></div>
+      <div class="card"><div class="stat-label">Vendas captadas por você</div><div class="stat-value" style="font-size:16px;">${fmtUSD(stats.atribuidasDiego.reduce((s,v)=>s+(Number(v.valor)||0),0))}</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px;">${stats.atribuidasDiego.length} nota(s)</div></div>
+    </div>
+
+    ${draft ? `
+    <div class="card" style="margin-bottom:18px;">
+      <div class="section-title">${draft.id ? 'Editar venda' : 'Nova venda'}</div>
+      <div class="grid grid-2" style="margin-bottom:12px;">
+        <div><label>Nota Fiscal</label><input id="v-nota" value="${escapeHtml(draft.notaFiscal)}" placeholder="Ex: 121633"></div>
+        <div><label>Código do cliente</label><input id="v-codigo" value="${escapeHtml(draft.codigoCliente)}" placeholder="Ex: 2983"></div>
+        <div><label>Nome do cliente (como sai na nota)</label><input id="v-nome" value="${escapeHtml(draft.nomeCliente)}" placeholder="Ex: Vive Telecom S.A."></div>
+        <div><label>Dia da compra</label><input type="date" id="v-data" value="${draft.diaCompra}"></div>
+        <div><label>Valor (USD)</label><input type="number" step="0.01" min="0" id="v-valor" value="${draft.valor}" placeholder="Ex: 360.36"></div>
+        <div><label>Obs.</label><input id="v-obs" value="${escapeHtml(draft.obs)}" placeholder="Ex: NOVO INTEGRADOR, ou nome do cliente real"></div>
+      </div>
+      <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:14px;">
+        <div class="checkbox-row"><input type="checkbox" id="v-novo-integrador" ${draft.novoIntegrador?'checked':''}><label style="margin:0;">Novo integrador captado (lead virou cliente)</label></div>
+        <div class="checkbox-row"><input type="checkbox" id="v-atribuida-diego" ${draft.atribuidaDiego?'checked':''}><label style="margin:0;">Nota saiu no meu nome — cliente real está nas Obs.</label></div>
+      </div>
+      <label>Categorias de produto vendidas</label>
+      <div style="margin-bottom:14px;">${renderCategoryChips(draft.categorias)}</div>
+      <div style="display:flex;gap:10px;">
+        <button class="btn-primary" id="btn-salvar-venda">Salvar venda</button>
+        <button class="btn-ghost" id="btn-cancelar-venda">Cancelar</button>
+      </div>
+    </div>
+    ` : ''}
+
+    <div class="grid grid-2" style="margin-bottom:18px;">
+      <div class="card">
+        <div class="section-title">Vendas por mês</div>
+        ${stats.mesesOrdenados.length ? stats.mesesOrdenados.map(k=>{
+          const m = stats.porMes[k];
+          return `<div style="margin-bottom:10px;">
+            <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-muted);margin-bottom:4px;"><span>${escapeHtml(m.label)}</span><span class="mono">${fmtUSD(m.total)} · ${m.count} nota(s)</span></div>
+            <div style="height:7px;background:var(--surface-3);border-radius:4px;overflow:hidden;"><div style="height:100%;width:${(m.total/maxMes*100)}%;background:linear-gradient(90deg,var(--amber),var(--stripe));border-radius:4px;"></div></div>
+          </div>`;
+        }).join('') : emptyState('Nenhuma venda registrada ainda.')}
+      </div>
+      <div class="card">
+        <div class="section-title">O que mais vende (por categoria)</div>
+        ${Object.keys(stats.porCategoria).length ? Object.entries(stats.porCategoria).sort((a,b)=>b[1].total-a[1].total).slice(0,10).map(([cat,d])=>`
+          <div style="margin-bottom:10px;">
+            <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-muted);margin-bottom:4px;"><span>${escapeHtml(cat)}</span><span class="mono">${fmtUSD(d.total)}</span></div>
+            <div style="height:7px;background:var(--surface-3);border-radius:4px;overflow:hidden;"><div style="height:100%;width:${(d.total/maxCat*100)}%;background:linear-gradient(90deg,var(--teal),var(--amber));border-radius:4px;"></div></div>
+          </div>`).join('') : emptyState('Marque categorias nas vendas para ver o que mais vende.')}
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:18px;">
+      <div class="section-title">Oportunidades de venda (por cliente)</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">Baseado no que cada cliente já comprou — prioridade para integradores ainda sem CFTV Hikvision.</div>
+      ${sugestoes.filter(s=>s.sugestao && s.prioridade>0).length ? sugestoes.filter(s=>s.sugestao && s.prioridade>0).slice(0,12).map(s=>`
+        <div class="card opp-card ${s.prioridade===3?'hot':''}" style="margin-bottom:10px;padding:12px 14px;">
+          <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+            <strong>${escapeHtml(s.nome)}</strong>
+            <span class="mono" style="font-size:12px;color:var(--text-muted);">${fmtUSD(s.total)} · ${s.count} nota(s)</span>
+          </div>
+          <div style="font-size:13px;color:var(--text-muted);margin-top:6px;">${escapeHtml(s.sugestao)}</div>
+          ${s.categorias.length ? `<div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Já compra: ${s.categorias.map(escapeHtml).join(', ')}</div>` : ''}
+        </div>`).join('') : emptyState('Cadastre categorias nas vendas para ver oportunidades de venda.')}
+    </div>
+
+    <div class="card" style="margin-bottom:18px;">
+      <div class="section-title">Top clientes</div>
+      <div style="overflow-x:auto;">
+      <table>
+        <thead><tr><th>Cliente</th><th class="right">Total</th><th class="right">Notas</th><th>Categorias</th></tr></thead>
+        <tbody>
+          ${Object.values(stats.porCliente).sort((a,b)=>b.total-a.total).slice(0,15).map(c=>`
+            <tr>
+              <td>${escapeHtml(c.nome)}</td>
+              <td class="right mono">${fmtUSD(c.total)}</td>
+              <td class="right mono">${c.count}</td>
+              <td style="font-size:12px;color:var(--text-muted);">${Array.from(c.categorias).map(escapeHtml).join(', ') || '-'}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">Todas as vendas</div>
+      ${listaVendas.length ? `
+      <div style="overflow-x:auto;">
+      <table>
+        <thead><tr><th>Nota</th><th>Código</th><th>Cliente</th><th>Data</th><th class="right">Valor</th><th>Obs.</th><th></th></tr></thead>
+        <tbody>
+          ${listaVendas.map(v=>`
+            <tr>
+              <td class="mono">${escapeHtml(v.notaFiscal)}</td>
+              <td class="mono">${escapeHtml(v.codigoCliente)}</td>
+              <td>${escapeHtml(v.nomeCliente)}${v.novoIntegrador?' <span class="tag" style="color:var(--teal);">novo integrador</span>':''}</td>
+              <td class="mono">${v.diaCompra ? new Date(v.diaCompra+'T00:00:00').toLocaleDateString('pt-BR') : '-'}</td>
+              <td class="right mono">${fmtUSD(v.valor)}</td>
+              <td style="font-size:12px;color:var(--text-muted);">${escapeHtml(v.obs)}</td>
+              <td class="center" style="white-space:nowrap;">
+                <button class="icon-btn venda-edit" data-id="${v.id}" title="Editar">${ICONS.eye}</button>
+                <button class="icon-btn danger venda-delete" data-id="${v.id}" title="Excluir">${ICONS.trash}</button>
+              </td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+      </div>` : emptyState('Nenhuma venda registrada ainda.')}
+    </div>
+  `;
+}
+
+/* ----- Excel import de vendas (aditivo, upsert por Nota Fiscal) ----- */
+function parseVendaExcelHeaders(row){
+  const map = {};
+  Object.keys(row).forEach(k=>{
+    const nk = normalize(k);
+    if(!map.notaFiscal && (nk.includes('nota fiscal') || nk.includes('nota') || nk.includes('nf'))) map.notaFiscal = k;
+    else if(!map.codigoCliente && (nk.includes('codigo') || nk.includes('cod cliente'))) map.codigoCliente = k;
+    else if(!map.nomeCliente && (nk.includes('nome cliente') || nk.includes('cliente') || nk.includes('nome'))) map.nomeCliente = k;
+    else if(!map.diaCompra && (nk.includes('dia da compra') || nk.includes('data') || nk.includes('dia'))) map.diaCompra = k;
+    else if(!map.valor && nk.includes('valor')) map.valor = k;
+    else if(!map.obs && (nk.includes('obs') || nk.includes('observa'))) map.obs = k;
+  });
+  return map;
+}
+
+function toISODate(raw){
+  if(!raw) return '';
+  if(raw instanceof Date) return raw.toISOString().slice(0,10);
+  if(typeof raw === 'number'){
+    const d = new Date(Math.round((raw - 25569) * 86400 * 1000));
+    return isNaN(d.getTime()) ? '' : d.toISOString().slice(0,10);
+  }
+  const s = String(raw).trim();
+  let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if(m){
+    let [,d,mo,y] = m;
+    if(y.length===2) y = '20'+y;
+    return `${y.padStart(4,'0')}-${mo.padStart(2,'0')}-${d.padStart(2,'0')}`;
+  }
+  m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(m) return s.slice(0,10);
+  return '';
+}
+
+function parseMoeda(raw){
+  if(typeof raw === 'number') return raw;
+  if(!raw) return 0;
+  let s = String(raw).replace(/[^0-9.,-]/g,'');
+  if(s.includes(',') && s.includes('.')) s = s.replace(/\./g,'').replace(',', '.');
+  else if(s.includes(',')) s = s.replace(',', '.');
+  return Number(s)||0;
+}
+
+function handleVendaExcelImport(file){
+  const reader = new FileReader();
+  reader.onload = (e)=>{
+    try{
+      const wb = XLSX.read(e.target.result, {type:'array'});
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, {defval:''});
+      if(!rows.length){ toast('A planilha está vazia.', true); return; }
+      const map = parseVendaExcelHeaders(rows[0]);
+      if(!map.notaFiscal || !map.valor){
+        toast('Não encontrei as colunas obrigatórias (Nota Fiscal, Valor). Verifique o cabeçalho.', true);
+        return;
+      }
+      let added = 0, updated = 0;
+      rows.forEach(row=>{
+        const notaFiscal = String(row[map.notaFiscal]||'').trim();
+        if(!notaFiscal) return;
+        const codigoCliente = map.codigoCliente ? String(row[map.codigoCliente]||'').trim() : '';
+        const nomeCliente = map.nomeCliente ? String(row[map.nomeCliente]||'').trim() : '';
+        const diaCompra = map.diaCompra ? toISODate(row[map.diaCompra]) : '';
+        const valor = parseMoeda(row[map.valor]);
+        const obs = map.obs ? String(row[map.obs]||'').trim() : '';
+        const novoIntegrador = normalize(obs).includes('novo integrador');
+        const atribuidaDiego = normalize(nomeCliente).includes('diego');
+        const existing = state.vendas.find(v=>v.notaFiscal===notaFiscal);
+        if(existing){
+          Object.assign(existing, {codigoCliente, nomeCliente, diaCompra, valor, obs, novoIntegrador, atribuidaDiego});
+          updated++;
+        }else{
+          state.vendas.push({id:uid(), notaFiscal, codigoCliente, nomeCliente, diaCompra, valor, obs, categorias:[], novoIntegrador, atribuidaDiego});
+          added++;
+        }
+      });
+      DB.set('vendas', state.vendas);
+      toast(`Importação concluída: ${added} venda(s) nova(s), ${updated} atualizada(s). Lembre-se de marcar as categorias de produto em cada uma.`);
+      render();
+    }catch(err){
+      toast('Não consegui ler essa planilha. Verifique o formato do arquivo.', true);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
 function buildOrcamentoPayload(draft){
   const totais = calcTotais(draft);
   return {
@@ -1385,6 +1717,66 @@ function attachHandlers(){
       catch(e2){ toast('Não consegui copiar. Selecione e copie manualmente.', true); }
     }
   });
+
+  // Vendas
+  const btnAddVenda = document.getElementById('btn-add-venda');
+  if(btnAddVenda) btnAddVenda.addEventListener('click', ()=>{ state.vendaDraft = novoVendaDraft(); render(); });
+  const btnCancelarVenda = document.getElementById('btn-cancelar-venda');
+  if(btnCancelarVenda) btnCancelarVenda.addEventListener('click', ()=>{ state.vendaDraft = null; render(); });
+  const btnSalvarVenda = document.getElementById('btn-salvar-venda');
+  if(btnSalvarVenda) btnSalvarVenda.addEventListener('click', ()=>{
+    const d = state.vendaDraft;
+    d.notaFiscal = (document.getElementById('v-nota')||{}).value || '';
+    d.codigoCliente = (document.getElementById('v-codigo')||{}).value || '';
+    d.nomeCliente = (document.getElementById('v-nome')||{}).value || '';
+    d.diaCompra = (document.getElementById('v-data')||{}).value || '';
+    d.valor = Number((document.getElementById('v-valor')||{}).value)||0;
+    d.obs = (document.getElementById('v-obs')||{}).value || '';
+    d.novoIntegrador = !!(document.getElementById('v-novo-integrador')||{}).checked;
+    d.atribuidaDiego = !!(document.getElementById('v-atribuida-diego')||{}).checked;
+    if(!d.notaFiscal.trim()){ toast('Informe o número da Nota Fiscal.', true); return; }
+    if(d.id){
+      const idx = state.vendas.findIndex(v=>v.id===d.id);
+      if(idx>-1) state.vendas[idx] = {...d};
+    }else{
+      state.vendas.push({...d, id: uid()});
+    }
+    DB.set('vendas', state.vendas);
+    state.vendaDraft = null;
+    toast('Venda salva com sucesso.');
+    render();
+  });
+  document.querySelectorAll('.venda-chip').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const cat = el.getAttribute('data-cat');
+      const idx = state.vendaDraft.categorias.indexOf(cat);
+      if(idx>-1) state.vendaDraft.categorias.splice(idx,1);
+      else state.vendaDraft.categorias.push(cat);
+      render();
+    });
+  });
+  document.querySelectorAll('.venda-edit').forEach(el=>{
+    el.addEventListener('click', (e)=>{
+      const id = e.currentTarget.getAttribute('data-id');
+      const v = state.vendas.find(x=>x.id===id);
+      if(v) state.vendaDraft = {...v, categorias:[...(v.categorias||[])]};
+      render();
+    });
+  });
+  document.querySelectorAll('.venda-delete').forEach(el=>{
+    el.addEventListener('click', (e)=>{
+      const id = e.currentTarget.getAttribute('data-id');
+      state.vendas = state.vendas.filter(x=>x.id!==id);
+      DB.set('vendas', state.vendas);
+      render();
+      toast('Venda excluída.');
+    });
+  });
+  const vendaImportInput = document.getElementById('venda-import-input');
+  if(vendaImportInput) vendaImportInput.addEventListener('change', (e)=>{
+    const file = e.target.files[0];
+    if(file) handleVendaExcelImport(file);
+  });
 }
 
 function bindTextField(elId, key){
@@ -1429,8 +1821,10 @@ async function init(){
       if(data){
         state.produtos = Array.isArray(data.produtos) ? data.produtos : [];
         state.orcamentos = Array.isArray(data.orcamentos) ? data.orcamentos : [];
+        state.vendas = Array.isArray(data.vendas) ? data.vendas : [];
         localStorage.setItem('tigers_produtos', JSON.stringify(state.produtos));
         localStorage.setItem('tigers_orcamentos', JSON.stringify(state.orcamentos));
+        localStorage.setItem('tigers_vendas', JSON.stringify(state.vendas));
         cloudSyncStatus = 'ok';
         render();
         return;
@@ -1442,6 +1836,7 @@ async function init(){
   }
   state.produtos = await DB.get('produtos', []);
   state.orcamentos = await DB.get('orcamentos', []);
+  state.vendas = await DB.get('vendas', []);
   render();
 }
 init();

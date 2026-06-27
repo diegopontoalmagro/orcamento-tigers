@@ -22,6 +22,8 @@
   --stripe:#e8632c;
   --teal:#2dd9bd;
   --danger:#ef4565;
+  --blue:#4a9eff;
+  --violet:#a78bfa;
   --display:'Space Grotesk',ui-sans-serif,sans-serif;
   --body:'Inter',ui-sans-serif,sans-serif;
   --mono:'JetBrains Mono',ui-monospace,monospace;
@@ -131,6 +133,11 @@ tr:hover td{background:rgba(255,255,255,.015);}
 .chip.selected{background:var(--amber);color:#1a1305;border-color:var(--amber);font-weight:600;}
 .opp-card{border-left:3px solid var(--teal);}
 .opp-card.hot{border-left-color:var(--stripe);}
+.kpi-card{border-top:3px solid var(--accent,var(--border));padding:24px 22px;}
+.kpi-card .kpi-icon{color:var(--accent,var(--text-muted));margin-bottom:14px;}
+.kpi-card .kpi-icon svg{width:30px;height:30px;display:block;}
+.kpi-card .kpi-value{font-family:var(--mono);font-size:30px;font-weight:700;line-height:1.1;}
+.kpi-card .kpi-label{font-size:12.5px;color:var(--text-muted);margin-top:6px;}
 
 .hidden{display:none !important;}
 ::-webkit-scrollbar{height:8px;width:8px;}
@@ -379,7 +386,13 @@ let state = {
 };
 
 function novoVendaDraft(){
-  return { id:null, notaFiscal:'', codigoCliente:'', nomeCliente:'', diaCompra:'', valor:'', obs:'', categorias:[], novoIntegrador:false, atribuidaDiego:false };
+  return { id:null, notaFiscal:'', codigoCliente:'', nomeCliente:'', diaCompra:'', valor:'', obs:'', categorias:[], produtos:[], novoIntegrador:false, atribuidaDiego:false };
+}
+
+function recalcularValorVenda(){
+  const d = state.vendaDraft;
+  if(!d || !d.produtos.length) return;
+  d.valor = d.produtos.reduce((s,p)=> s + (Number(p.preco)||0) * (Number(p.quantidade)||0), 0);
 }
 
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
@@ -475,6 +488,11 @@ const ICONS = {
   xlsx: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13l3 4M12 13l-3 4"/></svg>',
   search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>',
   eye: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>',
+  edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>',
+  money: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M9.5 15.5c0 1 1 1.8 2.5 1.8s2.5-.7 2.5-1.6c0-2.4-5-1.1-5-3.5 0-.9 1-1.6 2.5-1.6s2.5.6 2.5 1.6M12 8v1M12 15v1"/></svg>',
+  receipt: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 2h12v19l-2.5-1.5L13 21l-2.5-1.5L8 21l-2-1.5z"/><path d="M9 7h6M9 11h6M9 15h4"/></svg>',
+  target: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/></svg>',
+  users: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 20v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 5 18.5V20"/><circle cx="9.5" cy="7.5" r="3.2"/><path d="M16 8.2a2.8 2.8 0 0 1 0 5.4M19 20v-1.4a3 3 0 0 0-2-2.8"/></svg>',
   sync: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 16v4h4M21 8V4h-4"/></svg>',
   vendas: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18"/><path d="M7 15l4-5 4 3 5-7"/></svg>',
   star: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.7 6.9-6.3-3.8-6.3 3.8 1.7-6.9-5.4-4.7 7.1-.6z"/></svg>'
@@ -484,6 +502,7 @@ const ICONS = {
 const NAV_ITEMS = [
   {id:'dashboard', label:'Painel', icon:'dashboard'},
   {id:'vendas', label:'Vendas', icon:'vendas'},
+  {id:'kpis', label:'KPIs', icon:'target'},
   {id:'produtos', label:'Produtos', icon:'produtos'},
   {id:'orcamento', label:'Novo Orçamento', icon:'orcamento'},
   {id:'historico', label:'Histórico', icon:'historico'},
@@ -521,6 +540,7 @@ function render(){
   else if(state.view==='historico') main.innerHTML = viewHistorico();
   else if(state.view==='sync') main.innerHTML = viewSync();
   else if(state.view==='vendas') main.innerHTML = viewVendas();
+  else if(state.view==='kpis') main.innerHTML = viewKPIs();
   attachHandlers();
 }
 
@@ -641,11 +661,11 @@ function viewProdutos(){
         </tr></thead>
         <tbody>
           ${filtered.map(p=>`
-            <tr>
+            <tr style="${p.estoque<=0 ? 'opacity:.5;' : ''}">
               <td class="mono">${escapeHtml(p.codigo)}</td>
-              <td>${escapeHtml(p.nome)}</td>
+              <td>${escapeHtml(p.nome)}${p.estoque<=0 ? ' <span class="tag low">Sem estoque</span>' : ''}</td>
               <td><input list="categorias-datalist" class="produto-categoria-input" data-codigo="${escapeHtml(p.codigo)}" value="${escapeHtml(p.categoria)}" style="min-width:170px;"></td>
-              <td class="right mono">${p.estoque <= 0 ? '<span class="tag low">'+p.estoque+'</span>' : p.estoque}</td>
+              <td class="right mono">${p.estoque}</td>
               <td class="right mono">${fmtUSD(p.precoMinUsd)}</td>
             </tr>`).join('')}
         </tbody>
@@ -660,7 +680,7 @@ function viewProdutos(){
       <div class="section-title">Formato esperado da planilha</div>
       <div style="font-size:13px;color:var(--text-muted);line-height:1.6;">
         Colunas reconhecidas (em português ou espanhol): <span class="mono">Código / Codigo</span>, <span class="mono">Nome / Descrição / Descripcion</span>, <span class="mono">Categoria</span> (opcional — criada automaticamente se não existir), <span class="mono">Estoque / Stock</span>, <span class="mono">Preço mínimo / Precio Minimo</span> (em USD).
-        Toda nova importação <strong>substitui completamente</strong> o catálogo atual pelos produtos da nova planilha (o sistema confirma antes de substituir). Categorias que você já ajustou manualmente são mantidas para os códigos que continuarem aparecendo na nova planilha. Linhas sem código, nome ou preço são ignoradas.
+        A importação <strong>nunca apaga produtos</strong>: produtos existentes são atualizados pelo código, novos são adicionados, e produtos que não aparecerem na planilha nova ficam com <strong>estoque zerado</strong> (mas continuam no catálogo, marcados como "Sem estoque") — assim você sabe que já existiram. Categorias ajustadas manualmente são preservadas. Linhas sem código, nome ou preço são ignoradas.
       </div>
     </div>
   `;
@@ -693,13 +713,7 @@ function handleExcelImport(file){
         toast('Não encontrei as colunas obrigatórias (Código, Nome, Preço mínimo). Verifique o cabeçalho da planilha.', true);
         return;
       }
-      const oldCount = state.produtos.length;
-      showConfirmModal({
-        title: 'Substituir catálogo?',
-        message: `Esta nova planilha vai substituir todo o catálogo atual (${oldCount} produto${oldCount===1?'':'s'}) — os produtos do arquivo anterior que não estiverem nesta nova planilha serão removidos. Orçamentos já salvos no histórico não são afetados.`,
-        confirmLabel: 'Substituir catálogo',
-        onConfirm: ()=> commitImport(rows, map)
-      });
+      commitImport(rows, map);
     }catch(err){
       toast('Não consegui ler essa planilha. Verifique o formato do arquivo.', true);
     }
@@ -708,33 +722,48 @@ function handleExcelImport(file){
 }
 
 function commitImport(rows, map){
-  const oldCategoriaByCodigo = {};
-  state.produtos.forEach(p=>{ oldCategoriaByCodigo[p.codigo] = p.categoria; });
-  const oldCount = state.produtos.length;
-  const novos = [];
-  let skipped = 0;
+  const seenCodigos = new Set();
+  let added = 0, updated = 0, skipped = 0;
+
   rows.forEach(row=>{
     const codigo = String(row[map.codigo]||'').trim();
     const nome = String(row[map.nome]||'').trim();
     const precoMinUsd = Number(row[map.precoMinUsd])||0;
     if(!codigo || !nome || precoMinUsd <= 0){ skipped++; return; }
+    seenCodigos.add(codigo);
     const categoriaPlanilha = map.categoria ? String(row[map.categoria]||'').trim() : '';
     const estoque = map.estoque ? Number(row[map.estoque])||0 : 0;
-    let categoria;
-    if(categoriaPlanilha){
-      categoria = categoriaPlanilha;
+    const existing = state.produtos.find(p=>p.codigo===codigo);
+    if(existing){
+      existing.nome = nome || existing.nome;
+      existing.estoque = estoque;
+      existing.precoMinUsd = precoMinUsd;
+      if(categoriaPlanilha){
+        existing.categoria = categoriaPlanilha;
+      }else if(!existing.categoria || existing.categoria === 'Outros' || existing.categoria === 'Sem categoria'){
+        existing.categoria = detectCategoria(codigo, nome);
+      }
+      updated++;
     }else{
-      const prev = oldCategoriaByCodigo[codigo];
-      categoria = (prev && prev !== 'Outros' && prev !== 'Sem categoria') ? prev : detectCategoria(codigo, nome);
+      state.produtos.push({codigo, nome, categoria: categoriaPlanilha || detectCategoria(codigo, nome), estoque, precoMinUsd});
+      added++;
     }
-    novos.push({codigo, nome, categoria, estoque, precoMinUsd});
   });
-  state.produtos = novos;
+
+  // Produtos que já existiam mas não apareceram nesta planilha: mantidos no catálogo, com estoque zerado.
+  let zerados = 0;
+  state.produtos.forEach(p=>{
+    if(!seenCodigos.has(p.codigo) && p.estoque > 0){
+      p.estoque = 0;
+      zerados++;
+    }
+  });
+
   DB.set('produtos', state.produtos);
-  closeModal();
-  let msg = `Catálogo substituído: ${novos.length} produto(s) importado(s), ${oldCount} produto(s) anterior(es) removido(s).`;
+  let msg = `Importação concluída: ${added} produto(s) novo(s), ${updated} atualizado(s).`;
+  if(zerados) msg += ` ${zerados} produto(s) não apareceram nesta planilha e ficaram com estoque zerado (mantidos no catálogo).`;
   if(skipped) msg += ` ${skipped} linha(s) ignorada(s) por falta de código/nome/preço.`;
-  if(!map.estoque) msg += ` Atenção: não encontrei uma coluna de estoque nesta planilha — todos os produtos ficaram com estoque 0.`;
+  if(!map.estoque) msg += ` Atenção: não encontrei uma coluna de estoque nesta planilha.`;
   toast(msg);
   render();
 }
@@ -783,9 +812,19 @@ function calcTotais(draft){
 }
 
 /* ===================== COMPARADOR DE PRODUTOS (IA) ===================== */
+function getOpenAIKey(){
+  try{ return localStorage.getItem('tigers_openai_key') || ''; }catch(e){ return ''; }
+}
+
 async function compararProduto(idx){
   const comp = state.draft.comparacoes[idx];
   if(!comp || !comp.solicitado.trim()){ toast('Digite o produto que o cliente pediu.', true); return; }
+
+  const apiKey = getOpenAIKey();
+  if(!apiKey){
+    toast('Configure sua chave da API OpenAI acima antes de comparar.', true);
+    return;
+  }
 
   comp.loading = true;
   comp.resultado = null;
@@ -796,30 +835,42 @@ async function compararProduto(idx){
   if(candidatos.length < 3) candidatos = state.produtos;
   const catalogoResumo = candidatos.map(p=>`${p.codigo} | ${p.categoria} | ${p.nome} | estoque:${p.estoque} | USD ${p.precoMinUsd}`).join('\n');
 
-  const prompt = `Um cliente pediu este produto: "${comp.solicitado}"
+  const promptSistema = 'Você é um assistente de vendas técnico de uma distribuidora de equipamentos de redes, CFTV e eletrônicos. Responda SEMPRE em JSON válido, sem texto antes ou depois, sem markdown.';
+  const promptUsuario = `Um cliente pediu este produto: "${comp.solicitado}"
 
 Aqui está uma lista de produtos do nosso catálogo (código | categoria | nome | estoque | preço USD):
 ${catalogoResumo}
 
-Responda SOMENTE em JSON válido, sem texto antes ou depois, nesse formato exato:
+Responda SOMENTE em JSON válido, nesse formato exato:
 {
   "especificacoes_solicitado": ["especificação 1", "especificação 2", "especificação 3", "especificação 4"],
   "produto_equivalente_codigo": "CODIGO_DO_CATALOGO_ACIMA ou null se não houver equivalente razoável",
-  "motivo": "breve explicação (1-2 frases) de por que esse produto é equivalente, ou por que não há equivalente em estoque"
+  "motivo": "explicação comparando vantagens, desvantagens e custo-benefício do produto do catálogo frente ao solicitado (2-4 frases), ou por que não há equivalente em estoque"
 }`;
 
   try{
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
-      headers: {'Content-Type':'application/json'},
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1000,
-        messages: [{role:'user', content: prompt}]
+        model: 'gpt-3.5-turbo',
+        messages: [
+          {role:'system', content: promptSistema},
+          {role:'user', content: promptUsuario}
+        ],
+        temperature: 0.3
       })
     });
+    if(!res.ok){
+      const errJson = await res.json().catch(()=>null);
+      const msg = errJson && errJson.error && errJson.error.message ? errJson.error.message : `OpenAI respondeu ${res.status}`;
+      throw new Error(msg);
+    }
     const data = await res.json();
-    const textoResposta = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('');
+    const textoResposta = data.choices && data.choices[0] && data.choices[0].message ? data.choices[0].message.content : '';
     const limpo = textoResposta.replace(/```json|```/g,'').trim();
     const parsed = JSON.parse(limpo);
     const produtoEncontrado = parsed.produto_equivalente_codigo ? state.produtos.find(p=>p.codigo===parsed.produto_equivalente_codigo) : null;
@@ -829,8 +880,8 @@ Responda SOMENTE em JSON válido, sem texto antes ou depois, nesse formato exato
       motivo: parsed.motivo || ''
     };
   }catch(e){
-    comp.resultado = {erro: true};
-    toast('Não consegui gerar a comparação agora. Tente novamente.', true);
+    comp.resultado = {erro: true, mensagemErro: 'Não consegui gerar a comparação: ' + ((e && e.message) || 'erro desconhecido')};
+    toast('Não consegui gerar a comparação agora. Veja o motivo no card.', true);
   }
   comp.loading = false;
   render();
@@ -896,6 +947,17 @@ function viewOrcamento(){
         <button class="btn-secondary" id="btn-add-comparacao" style="display:inline-flex;align-items:center;gap:6px;">${ICONS.plus} Adicionar comparação</button>
       </div>
       <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">Cliente pediu um modelo específico? Digite-o e veja as especificações dele lado a lado com o que temos em estoque.</div>
+
+      <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:14px;">
+        <label style="margin-bottom:6px;">Chave da API OpenAI (usada apenas neste navegador)</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <input type="password" id="openai-key-input" style="flex:1;min-width:220px;" placeholder="sk-..." value="${escapeHtml(getOpenAIKey())}">
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:8px;line-height:1.5;">
+          Gere a sua em <a href="https://platform.openai.com/api-keys" target="_blank" style="color:var(--teal);">platform.openai.com/api-keys</a>. O modelo usado (gpt-3.5-turbo) é de baixo custo, mas <strong>não é gratuito</strong> — a OpenAI cobra por uso (poucos centavos de dólar por comparação). Trate a chave como uma senha.
+        </div>
+      </div>
+
       ${d.comparacoes.length ? d.comparacoes.map((c,idx)=>`
         <div class="card" style="margin-bottom:12px;padding:14px;">
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
@@ -904,7 +966,7 @@ function viewOrcamento(){
             <button class="icon-btn danger comparacao-remove" data-idx="${idx}" title="Remover">${ICONS.trash}</button>
           </div>
           ${c.resultado ? (c.resultado.erro ? `
-            <div style="font-size:13px;color:var(--danger);">Não consegui gerar a comparação. Tente novamente.</div>
+            <div style="font-size:13px;color:var(--danger);">${escapeHtml(c.resultado.mensagemErro || 'Não consegui gerar a comparação. Tente novamente.')}</div>
           ` : `
             <div class="grid grid-2">
               <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:12px;">
@@ -1229,19 +1291,14 @@ function renderCategoryChips(selected){
 }
 
 function viewVendas(){
-  const stats = calcVendasStats();
-  const sugestoes = gerarSugestoes(stats.porCliente);
-  const maxCat = Math.max(1, ...Object.values(stats.porCategoria).map(c=>c.total));
-  const maxMes = Math.max(1, ...stats.mesesOrdenados.map(k=>stats.porMes[k].total));
   const draft = state.vendaDraft;
-
   const listaVendas = [...state.vendas].sort((a,b)=> (b.diaCompra||'').localeCompare(a.diaCompra||''));
 
   return `
     <div class="page-header">
       <div>
         <div class="page-title">Vendas</div>
-        <div class="page-desc">Registre suas vendas, acompanhe o crescimento e veja oportunidades de venda por cliente</div>
+        <div class="page-desc">Registre suas vendas — para indicadores e análises, veja a aba KPIs</div>
       </div>
       <div style="display:flex;gap:8px;">
         <label class="btn-secondary" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;">
@@ -1252,47 +1309,49 @@ function viewVendas(){
       </div>
     </div>
 
-    <div class="grid grid-4" style="margin-bottom:18px;">
-      <div class="card"><div class="stat-label">Total vendido</div><div class="stat-value amber">${fmtUSD(stats.totalUsd)}</div></div>
-      <div class="card"><div class="stat-label">Notas registradas</div><div class="stat-value">${state.vendas.length}</div></div>
-      <div class="card"><div class="stat-label">Novos integradores captados</div><div class="stat-value teal">${stats.novosIntegradores.length}</div></div>
-    <div class="grid grid-4" style="margin-bottom:14px;">
-      <div class="card">
-        <div class="stat-label">Total vendido</div>
-        <div class="stat-value amber">${fmtUSD(stats.totalUsd)}</div>
-        ${stats.crescimentoPercent!==null ? `<div style="font-size:12px;margin-top:4px;color:${stats.crescimentoPercent>=0?'var(--teal)':'var(--danger)'};">${stats.crescimentoPercent>=0?'▲':'▼'} ${Math.abs(stats.crescimentoPercent).toFixed(1)}% vs. mês anterior</div>` : ''}
-      </div>
-      <div class="card"><div class="stat-label">Ticket médio</div><div class="stat-value">${fmtUSD(stats.ticketMedio)}</div><div style="font-size:11px;color:var(--text-muted);margin-top:4px;">${state.vendas.length} nota(s)</div></div>
-      <div class="card"><div class="stat-label">Novos integradores captados</div><div class="stat-value teal">${stats.novosIntegradores.length}</div></div>
-      <div class="card">
-        <div class="stat-label">Penetração CFTV na base de redes</div>
-        <div class="stat-value" style="font-size:${stats.penetracaoCftv!==null?'26px':'15px'};color:${stats.penetracaoCftv!==null && stats.penetracaoCftv<50 ? 'var(--stripe)' : 'var(--text)'};">${stats.penetracaoCftv!==null ? stats.penetracaoCftv.toFixed(0)+'%' : 'Sem dados'}</div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">${stats.clientesComRedeECftv.length}/${stats.clientesComRede.length} cliente(s) de rede já compram CFTV</div>
-      </div>
-    </div>
-
-    <div class="card" style="margin-bottom:18px;">
-      <div class="section-title">Resumo executivo</div>
-      <div style="font-size:13px;color:var(--text-muted);line-height:1.7;">${escapeHtml(gerarResumoExecutivo(stats))}</div>
-    </div>
-
     ${draft ? `
-    <div class="card" style="margin-bottom:18px;">
-      <div class="section-title">${draft.id ? 'Editar venda' : 'Nova venda'}</div>
-      <div class="grid grid-2" style="margin-bottom:12px;">
+    <div class="card" style="margin-bottom:28px;">
+      <div class="section-title" style="margin-bottom:18px;">${draft.id ? 'Editar venda' : 'Nova venda'}</div>
+      <div class="grid grid-2" style="margin-bottom:20px;gap:18px;">
         <div><label>Nota Fiscal</label><input id="v-nota" value="${escapeHtml(draft.notaFiscal)}" placeholder="Ex: 121633"></div>
         <div><label>Código do cliente</label><input id="v-codigo" value="${escapeHtml(draft.codigoCliente)}" placeholder="Ex: 2983"></div>
         <div><label>Nome do cliente (como sai na nota)</label><input id="v-nome" value="${escapeHtml(draft.nomeCliente)}" placeholder="Ex: Vive Telecom S.A."></div>
         <div><label>Dia da compra</label><input type="date" id="v-data" value="${draft.diaCompra}"></div>
-        <div><label>Valor (USD)</label><input type="number" step="0.01" min="0" id="v-valor" value="${draft.valor}" placeholder="Ex: 360.36"></div>
+        <div>
+          <label>Valor (USD)${draft.produtos.length ? ' — recalculado automaticamente pelos produtos' : ''}</label>
+          <input type="number" step="0.01" min="0" id="v-valor" value="${Number(draft.valor).toFixed(2)}" placeholder="Ex: 360.36" ${draft.produtos.length ? 'readonly style="opacity:.7;"' : ''}>
+        </div>
         <div><label>Obs.</label><input id="v-obs" value="${escapeHtml(draft.obs)}" placeholder="Ex: NOVO INTEGRADOR, ou nome do cliente real"></div>
       </div>
-      <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:14px;">
+      <div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:20px;">
         <div class="checkbox-row"><input type="checkbox" id="v-novo-integrador" ${draft.novoIntegrador?'checked':''}><label style="margin:0;">Novo integrador captado (lead virou cliente)</label></div>
         <div class="checkbox-row"><input type="checkbox" id="v-atribuida-diego" ${draft.atribuidaDiego?'checked':''}><label style="margin:0;">Nota saiu no meu nome — cliente real está nas Obs.</label></div>
       </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <label style="margin:0;">Produtos vinculados a esta venda</label>
+        <button class="btn-secondary" id="btn-add-produto-venda" style="font-size:12px;padding:6px 10px;display:inline-flex;align-items:center;gap:4px;">${ICONS.plus} Adicionar produto</button>
+      </div>
+      ${draft.produtos.length ? `
+      <div style="overflow-x:auto;margin-bottom:22px;">
+      <table>
+        <thead><tr><th>Produto</th><th class="right">Qtd</th><th class="right">Preço USD</th><th class="right">Subtotal</th><th></th></tr></thead>
+        <tbody>
+          ${draft.produtos.map((p,pidx)=>`
+            <tr>
+              <td><input data-pidx="${pidx}" class="venda-produto-input mono" autocomplete="off" value="${p.codigo ? escapeHtml(p.codigo+' — '+p.nome) : ''}" placeholder="Buscar produto..."></td>
+              <td><input type="number" min="0" step="1" class="venda-produto-qtd right mono" data-pidx="${pidx}" value="${p.quantidade}" style="width:70px;"></td>
+              <td><input type="number" min="0" step="0.01" class="venda-produto-preco right mono" data-pidx="${pidx}" value="${Number(p.preco).toFixed(2)}" style="width:100px;"></td>
+              <td class="right mono">${fmtUSD((Number(p.preco)||0)*(Number(p.quantidade)||0))}</td>
+              <td class="center"><button class="icon-btn danger venda-produto-remove" data-pidx="${pidx}">${ICONS.trash}</button></td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+      </div>
+      ` : `<div style="font-size:12px;color:var(--text-muted);margin-bottom:22px;">Nenhum produto vinculado — o valor da venda usa o campo "Valor" digitado manualmente acima.</div>`}
+
       <label>Categorias de produto vendidas</label>
-      <div style="margin-bottom:14px;">${renderCategoryChips(draft.categorias)}</div>
+      <div style="margin:10px 0 22px 0;">${renderCategoryChips(draft.categorias)}</div>
       <div style="display:flex;gap:10px;">
         <button class="btn-primary" id="btn-salvar-venda">Salvar venda</button>
         <button class="btn-ghost" id="btn-cancelar-venda">Cancelar</button>
@@ -1300,61 +1359,8 @@ function viewVendas(){
     </div>
     ` : ''}
 
-    <div class="grid grid-2" style="margin-bottom:18px;">
-      <div class="card">
-        <div class="section-title">Vendas por mês</div>
-        ${stats.mesesOrdenados.length ? stats.mesesOrdenados.map(k=>{
-          const m = stats.porMes[k];
-          return `<div style="margin-bottom:10px;">
-            <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-muted);margin-bottom:4px;"><span>${escapeHtml(m.label)}</span><span class="mono">${fmtUSD(m.total)} · ${m.count} nota(s)</span></div>
-            <div style="height:7px;background:var(--surface-3);border-radius:4px;overflow:hidden;"><div style="height:100%;width:${(m.total/maxMes*100)}%;background:linear-gradient(90deg,var(--amber),var(--stripe));border-radius:4px;"></div></div>
-          </div>`;
-        }).join('') : emptyState('Nenhuma venda registrada ainda.')}
-      </div>
-      <div class="card">
-        <div class="section-title">O que mais vende (por categoria)</div>
-        ${Object.keys(stats.porCategoria).length ? Object.entries(stats.porCategoria).sort((a,b)=>b[1].total-a[1].total).slice(0,10).map(([cat,d])=>`
-          <div style="margin-bottom:10px;">
-            <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-muted);margin-bottom:4px;"><span>${escapeHtml(cat)}</span><span class="mono">${fmtUSD(d.total)}</span></div>
-            <div style="height:7px;background:var(--surface-3);border-radius:4px;overflow:hidden;"><div style="height:100%;width:${(d.total/maxCat*100)}%;background:linear-gradient(90deg,var(--teal),var(--amber));border-radius:4px;"></div></div>
-          </div>`).join('') : emptyState('Marque categorias nas vendas para ver o que mais vende.')}
-      </div>
-    </div>
-
-    <div class="card" style="margin-bottom:18px;">
-      <div class="section-title">Oportunidades de venda (por cliente)</div>
-      <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">Baseado no que cada cliente já comprou — prioridade para integradores ainda sem CFTV Hikvision.</div>
-      ${sugestoes.filter(s=>s.sugestao && s.prioridade>0).length ? sugestoes.filter(s=>s.sugestao && s.prioridade>0).slice(0,12).map(s=>`
-        <div class="card opp-card ${s.prioridade===3?'hot':''}" style="margin-bottom:10px;padding:12px 14px;">
-          <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-            <strong>${escapeHtml(s.nome)}</strong>
-            <span class="mono" style="font-size:12px;color:var(--text-muted);">${fmtUSD(s.total)} · ${s.count} nota(s)</span>
-          </div>
-          <div style="font-size:13px;color:var(--text-muted);margin-top:6px;">${escapeHtml(s.sugestao)}</div>
-          ${s.categorias.length ? `<div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Já compra: ${s.categorias.map(escapeHtml).join(', ')}</div>` : ''}
-        </div>`).join('') : emptyState('Cadastre categorias nas vendas para ver oportunidades de venda.')}
-    </div>
-
-    <div class="card" style="margin-bottom:18px;">
-      <div class="section-title">Top clientes</div>
-      <div style="overflow-x:auto;">
-      <table>
-        <thead><tr><th>Cliente</th><th class="right">Total</th><th class="right">Notas</th><th>Categorias</th></tr></thead>
-        <tbody>
-          ${Object.values(stats.porCliente).sort((a,b)=>b.total-a.total).slice(0,15).map(c=>`
-            <tr>
-              <td>${escapeHtml(c.nome)}</td>
-              <td class="right mono">${fmtUSD(c.total)}</td>
-              <td class="right mono">${c.count}</td>
-              <td style="font-size:12px;color:var(--text-muted);">${Array.from(c.categorias).map(escapeHtml).join(', ') || '-'}</td>
-            </tr>`).join('')}
-        </tbody>
-      </table>
-      </div>
-    </div>
-
     <div class="card">
-      <div class="section-title">Todas as vendas</div>
+      <div class="section-title" style="margin-bottom:16px;">Todas as vendas</div>
       ${listaVendas.length ? `
       <div style="overflow-x:auto;">
       <table>
@@ -1369,13 +1375,124 @@ function viewVendas(){
               <td class="right mono">${fmtUSD(v.valor)}</td>
               <td style="font-size:12px;color:var(--text-muted);">${escapeHtml(v.obs)}</td>
               <td class="center" style="white-space:nowrap;">
-                <button class="icon-btn venda-edit" data-id="${v.id}" title="Editar">${ICONS.eye}</button>
+                <button class="icon-btn venda-edit" data-id="${v.id}" title="Editar">${ICONS.edit}</button>
                 <button class="icon-btn danger venda-delete" data-id="${v.id}" title="Excluir">${ICONS.trash}</button>
               </td>
             </tr>`).join('')}
         </tbody>
       </table>
       </div>` : emptyState('Nenhuma venda registrada ainda.')}
+    </div>
+  `;
+}
+
+/* ===================== KPIs (DASHBOARD ANALÍTICO) ===================== */
+function viewKPIs(){
+  const stats = calcVendasStats();
+  const sugestoes = gerarSugestoes(stats.porCliente);
+  const maxCat = Math.max(1, ...Object.values(stats.porCategoria).map(c=>c.total));
+  const maxMes = Math.max(1, ...stats.mesesOrdenados.map(k=>stats.porMes[k].total));
+  const taxaConversao = state.vendas.length ? (stats.novosIntegradores.length / state.vendas.length) * 100 : null;
+
+  return `
+    <div class="page-header">
+      <div>
+        <div class="page-title">KPIs</div>
+        <div class="page-desc">Indicadores de desempenho comercial, calculados a partir das vendas registradas</div>
+      </div>
+    </div>
+
+    <div class="grid grid-4" style="margin-bottom:28px;">
+      <div class="card kpi-card" style="--accent:var(--teal);">
+        <div class="kpi-icon">${ICONS.money}</div>
+        <div class="kpi-value" style="color:var(--teal);">${fmtUSD(stats.totalUsd)}</div>
+        <div class="kpi-label">Total vendido</div>
+        ${stats.crescimentoPercent!==null ? `<div style="font-size:12px;margin-top:6px;color:${stats.crescimentoPercent>=0?'var(--teal)':'var(--danger)'};">${stats.crescimentoPercent>=0?'▲':'▼'} ${Math.abs(stats.crescimentoPercent).toFixed(1)}% vs. mês anterior</div>` : ''}
+      </div>
+      <div class="card kpi-card" style="--accent:var(--blue);">
+        <div class="kpi-icon">${ICONS.receipt}</div>
+        <div class="kpi-value" style="color:var(--blue);">${state.vendas.length}</div>
+        <div class="kpi-label">Notas registradas</div>
+      </div>
+      <div class="card kpi-card" style="--accent:var(--amber);">
+        <div class="kpi-icon">${ICONS.target}</div>
+        <div class="kpi-value" style="color:var(--amber);">${fmtUSD(stats.ticketMedio)}</div>
+        <div class="kpi-label">Ticket médio</div>
+      </div>
+      <div class="card kpi-card" style="--accent:var(--stripe);">
+        <div class="kpi-icon">${ICONS.users}</div>
+        <div class="kpi-value" style="color:var(--stripe);">${stats.novosIntegradores.length}</div>
+        <div class="kpi-label">Novos integradores captados</div>
+      </div>
+      <div class="card kpi-card" style="--accent:var(--violet);">
+        <div class="kpi-icon">${ICONS.star}</div>
+        <div class="kpi-value" style="color:var(--violet);">${taxaConversao!==null ? taxaConversao.toFixed(0)+'%' : '—'}</div>
+        <div class="kpi-label">Taxa de conversão (novos integradores)</div>
+      </div>
+      <div class="card kpi-card" style="--accent:var(--danger);">
+        <div class="kpi-icon">${ICONS.vendas}</div>
+        <div class="kpi-value" style="color:var(--danger);">${stats.penetracaoCftv!==null ? stats.penetracaoCftv.toFixed(0)+'%' : '—'}</div>
+        <div class="kpi-label">Penetração CFTV na base de redes</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">${stats.clientesComRedeECftv.length}/${stats.clientesComRede.length} cliente(s)</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:28px;">
+      <div class="section-title" style="margin-bottom:14px;">Resumo executivo</div>
+      <div style="font-size:13px;color:var(--text-muted);line-height:1.8;">${escapeHtml(gerarResumoExecutivo(stats))}</div>
+    </div>
+
+    <div class="grid grid-2" style="margin-bottom:28px;gap:18px;">
+      <div class="card">
+        <div class="section-title" style="margin-bottom:16px;">Vendas por mês</div>
+        ${stats.mesesOrdenados.length ? stats.mesesOrdenados.map(k=>{
+          const m = stats.porMes[k];
+          return `<div style="margin-bottom:14px;">
+            <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-muted);margin-bottom:5px;"><span>${escapeHtml(m.label)}</span><span class="mono">${fmtUSD(m.total)} · ${m.count} nota(s)</span></div>
+            <div style="height:8px;background:var(--surface-3);border-radius:4px;overflow:hidden;"><div style="height:100%;width:${(m.total/maxMes*100)}%;background:linear-gradient(90deg,var(--amber),var(--stripe));border-radius:4px;"></div></div>
+          </div>`;
+        }).join('') : emptyState('Nenhuma venda registrada ainda.')}
+      </div>
+      <div class="card">
+        <div class="section-title" style="margin-bottom:16px;">O que mais vende (por categoria)</div>
+        ${Object.keys(stats.porCategoria).length ? Object.entries(stats.porCategoria).sort((a,b)=>b[1].total-a[1].total).slice(0,10).map(([cat,d])=>`
+          <div style="margin-bottom:14px;">
+            <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-muted);margin-bottom:5px;"><span>${escapeHtml(cat)}</span><span class="mono">${fmtUSD(d.total)}</span></div>
+            <div style="height:8px;background:var(--surface-3);border-radius:4px;overflow:hidden;"><div style="height:100%;width:${(d.total/maxCat*100)}%;background:linear-gradient(90deg,var(--teal),var(--amber));border-radius:4px;"></div></div>
+          </div>`).join('') : emptyState('Marque categorias nas vendas para ver o que mais vende.')}
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:28px;">
+      <div class="section-title" style="margin-bottom:8px;">Oportunidades de venda (por cliente)</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:18px;">Baseado no que cada cliente já comprou — prioridade para integradores ainda sem CFTV Hikvision.</div>
+      ${sugestoes.filter(s=>s.sugestao && s.prioridade>0).length ? sugestoes.filter(s=>s.sugestao && s.prioridade>0).slice(0,12).map(s=>`
+        <div class="card opp-card ${s.prioridade===3?'hot':''}" style="margin-bottom:12px;padding:16px;">
+          <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+            <strong>${escapeHtml(s.nome)}</strong>
+            <span class="mono" style="font-size:12px;color:var(--text-muted);">${fmtUSD(s.total)} · ${s.count} nota(s)</span>
+          </div>
+          <div style="font-size:13px;color:var(--text-muted);margin-top:8px;">${escapeHtml(s.sugestao)}</div>
+          ${s.categorias.length ? `<div style="font-size:11px;color:var(--text-muted);margin-top:8px;">Já compra: ${s.categorias.map(escapeHtml).join(', ')}</div>` : ''}
+        </div>`).join('') : emptyState('Cadastre categorias nas vendas para ver oportunidades de venda.')}
+    </div>
+
+    <div class="card">
+      <div class="section-title" style="margin-bottom:16px;">Top clientes</div>
+      <div style="overflow-x:auto;">
+      <table>
+        <thead><tr><th>Cliente</th><th class="right">Total</th><th class="right">Notas</th><th>Categorias</th></tr></thead>
+        <tbody>
+          ${Object.values(stats.porCliente).sort((a,b)=>b.total-a.total).slice(0,15).map(c=>`
+            <tr>
+              <td>${escapeHtml(c.nome)}</td>
+              <td class="right mono">${fmtUSD(c.total)}</td>
+              <td class="right mono">${c.count}</td>
+              <td style="font-size:12px;color:var(--text-muted);">${Array.from(c.categorias).map(escapeHtml).join(', ') || '-'}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+      </div>
     </div>
   `;
 }
@@ -1452,7 +1569,7 @@ function handleVendaExcelImport(file){
           Object.assign(existing, {codigoCliente, nomeCliente, diaCompra, valor, obs, novoIntegrador, atribuidaDiego});
           updated++;
         }else{
-          state.vendas.push({id:uid(), notaFiscal, codigoCliente, nomeCliente, diaCompra, valor, obs, categorias:[], novoIntegrador, atribuidaDiego});
+          state.vendas.push({id:uid(), notaFiscal, codigoCliente, nomeCliente, diaCompra, valor, obs, categorias:[], produtos:[], novoIntegrador, atribuidaDiego});
           added++;
         }
       });
@@ -1625,12 +1742,12 @@ function refreshTotaisELinhas(){
 }
 
 /* ===================== SELETOR DE PRODUTO (dropdown customizado) ===================== */
-let activeProdutoDropdownIdx = null;
+let activeDropdownContext = null; // {type:'orcamento'|'venda', idx}
 
-function openProdutoDropdown(idx, inputEl){
-  activeProdutoDropdownIdx = idx;
+function openProdutoDropdown(type, idx, inputEl){
+  activeDropdownContext = {type, idx};
   positionProdutoDropdown(inputEl);
-  filterProdutoDropdown(idx, inputEl.value);
+  filterProdutoDropdown(inputEl.value);
 }
 
 function positionProdutoDropdown(inputEl){
@@ -1649,7 +1766,7 @@ function positionProdutoDropdown(inputEl){
   }
 }
 
-function filterProdutoDropdown(idx, query){
+function filterProdutoDropdown(query){
   const dd = document.getElementById('produto-dropdown');
   if(!dd) return;
   const term = normalize(query);
@@ -1667,23 +1784,30 @@ function filterProdutoDropdown(idx, query){
       </div>`).join('');
     dd.querySelectorAll('.dd-item').forEach(el=>{
       el.addEventListener('click', ()=>{
-        selectProdutoForItem(idx, el.getAttribute('data-codigo'));
+        selectProdutoForItem(el.getAttribute('data-codigo'));
       });
     });
   }
   dd.classList.remove('hidden');
 }
 
-function selectProdutoForItem(idx, codigo){
+function selectProdutoForItem(codigo){
+  const ctx = activeDropdownContext;
+  if(!ctx) return;
   const p = state.produtos.find(pp=>pp.codigo===codigo);
   if(!p){ toast('Produto não encontrado no catálogo.', true); return; }
-  state.draft.itens[idx] = {...state.draft.itens[idx], codigo:p.codigo, nome:p.nome, categoria:p.categoria, precoMinUsd:p.precoMinUsd, precoCatalogo:p.precoMinUsd};
+  if(ctx.type === 'orcamento'){
+    state.draft.itens[ctx.idx] = {...state.draft.itens[ctx.idx], codigo:p.codigo, nome:p.nome, categoria:p.categoria, precoMinUsd:p.precoMinUsd, precoCatalogo:p.precoMinUsd};
+  }else if(ctx.type === 'venda'){
+    state.vendaDraft.produtos[ctx.idx] = {...state.vendaDraft.produtos[ctx.idx], codigo:p.codigo, nome:p.nome, preco:p.precoMinUsd};
+    recalcularValorVenda();
+  }
   closeProdutoDropdown();
   render();
 }
 
 function closeProdutoDropdown(){
-  activeProdutoDropdownIdx = null;
+  activeDropdownContext = null;
   const dd = document.getElementById('produto-dropdown');
   if(dd) dd.classList.add('hidden');
 }
@@ -1692,7 +1816,7 @@ function closeProdutoDropdown(){
 window.addEventListener('click', (e)=>{
   const dd = document.getElementById('produto-dropdown');
   if(!dd || dd.classList.contains('hidden')) return;
-  if(dd.contains(e.target) || e.target.classList.contains('item-produto-input')) return;
+  if(dd.contains(e.target) || e.target.classList.contains('item-produto-input') || e.target.classList.contains('venda-produto-input')) return;
   closeProdutoDropdown();
 });
 window.addEventListener('scroll', ()=>{ closeProdutoDropdown(); }, true);
@@ -1772,10 +1896,10 @@ function attachHandlers(){
   // Item rows
   document.querySelectorAll('.item-produto-input').forEach(el=>{
     const idx = Number(el.getAttribute('data-idx'));
-    el.addEventListener('focus', (e)=> openProdutoDropdown(idx, e.target));
+    el.addEventListener('focus', (e)=> openProdutoDropdown('orcamento', idx, e.target));
     el.addEventListener('input', (e)=>{
-      if(activeProdutoDropdownIdx !== idx) openProdutoDropdown(idx, e.target);
-      else { positionProdutoDropdown(e.target); filterProdutoDropdown(idx, e.target.value); }
+      if(!(activeDropdownContext && activeDropdownContext.type==='orcamento' && activeDropdownContext.idx===idx)) openProdutoDropdown('orcamento', idx, e.target);
+      else { positionProdutoDropdown(e.target); filterProdutoDropdown(e.target.value); }
     });
   });
   document.querySelectorAll('.item-qtd').forEach(el=>{
@@ -1904,6 +2028,43 @@ function attachHandlers(){
     toast('Venda salva com sucesso.');
     render();
   });
+  const btnAddProdutoVenda = document.getElementById('btn-add-produto-venda');
+  if(btnAddProdutoVenda) btnAddProdutoVenda.addEventListener('click', ()=>{
+    state.vendaDraft.produtos.push({codigo:'', nome:'', quantidade:1, preco:0});
+    render();
+  });
+  document.querySelectorAll('.venda-produto-input').forEach(el=>{
+    const pidx = Number(el.getAttribute('data-pidx'));
+    el.addEventListener('focus', (e)=> openProdutoDropdown('venda', pidx, e.target));
+    el.addEventListener('input', (e)=>{
+      if(!(activeDropdownContext && activeDropdownContext.type==='venda' && activeDropdownContext.idx===pidx)) openProdutoDropdown('venda', pidx, e.target);
+      else { positionProdutoDropdown(e.target); filterProdutoDropdown(e.target.value); }
+    });
+  });
+  document.querySelectorAll('.venda-produto-qtd').forEach(el=>{
+    el.addEventListener('input', (e)=>{
+      const pidx = Number(e.target.getAttribute('data-pidx'));
+      state.vendaDraft.produtos[pidx].quantidade = Number(e.target.value)||0;
+      recalcularValorVenda();
+      render();
+    });
+  });
+  document.querySelectorAll('.venda-produto-preco').forEach(el=>{
+    el.addEventListener('input', (e)=>{
+      const pidx = Number(e.target.getAttribute('data-pidx'));
+      state.vendaDraft.produtos[pidx].preco = Number(e.target.value)||0;
+      recalcularValorVenda();
+      render();
+    });
+  });
+  document.querySelectorAll('.venda-produto-remove').forEach(el=>{
+    el.addEventListener('click', (e)=>{
+      const pidx = Number(e.currentTarget.getAttribute('data-pidx'));
+      state.vendaDraft.produtos.splice(pidx,1);
+      recalcularValorVenda();
+      render();
+    });
+  });
   document.querySelectorAll('.venda-chip').forEach(el=>{
     el.addEventListener('click', ()=>{
       const cat = el.getAttribute('data-cat');
@@ -1917,7 +2078,7 @@ function attachHandlers(){
     el.addEventListener('click', (e)=>{
       const id = e.currentTarget.getAttribute('data-id');
       const v = state.vendas.find(x=>x.id===id);
-      if(v) state.vendaDraft = {...v, categorias:[...(v.categorias||[])]};
+      if(v) state.vendaDraft = {...v, categorias:[...(v.categorias||[])], produtos:(v.produtos||[]).map(p=>({...p}))};
       render();
     });
   });
@@ -1937,6 +2098,10 @@ function attachHandlers(){
   });
 
   // Comparador de produtos
+  const openaiKeyInput = document.getElementById('openai-key-input');
+  if(openaiKeyInput) openaiKeyInput.addEventListener('input', (e)=>{
+    try{ localStorage.setItem('tigers_openai_key', e.target.value.trim()); }catch(err){}
+  });
   const btnAddComparacao = document.getElementById('btn-add-comparacao');
   if(btnAddComparacao) btnAddComparacao.addEventListener('click', ()=>{
     state.draft.comparacoes.push({id:uid(), solicitado:'', loading:false, resultado:null});

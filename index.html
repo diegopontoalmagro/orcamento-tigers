@@ -812,19 +812,9 @@ function calcTotais(draft){
 }
 
 /* ===================== COMPARADOR DE PRODUTOS (IA) ===================== */
-function getOpenAIKey(){
-  try{ return localStorage.getItem('tigers_openai_key') || ''; }catch(e){ return ''; }
-}
-
 async function compararProduto(idx){
   const comp = state.draft.comparacoes[idx];
   if(!comp || !comp.solicitado.trim()){ toast('Digite o produto que o cliente pediu.', true); return; }
-
-  const apiKey = getOpenAIKey();
-  if(!apiKey){
-    toast('Configure sua chave da API OpenAI acima antes de comparar.', true);
-    return;
-  }
 
   comp.loading = true;
   comp.resultado = null;
@@ -835,7 +825,7 @@ async function compararProduto(idx){
   if(candidatos.length < 3) candidatos = state.produtos;
   const catalogoResumo = candidatos.map(p=>`${p.codigo} | ${p.categoria} | ${p.nome} | estoque:${p.estoque} | USD ${p.precoMinUsd}`).join('\n');
 
-  const promptSistema = 'Você é um assistente de vendas técnico de uma distribuidora de equipamentos de redes, CFTV e eletrônicos. Responda SEMPRE em JSON válido, sem texto antes ou depois, sem markdown.';
+  const promptSistema = 'Você é um assistente de vendas técnico de uma distribuidora de equipamentos de redes, CFTV e eletrônicos. Responda SEMPRE em JSON válido, sem texto antes ou depois, sem markdown, sem comentários.';
   const promptUsuario = `Um cliente pediu este produto: "${comp.solicitado}"
 
 Aqui está uma lista de produtos do nosso catálogo (código | categoria | nome | estoque | preço USD):
@@ -849,14 +839,12 @@ Responda SOMENTE em JSON válido, nesse formato exato:
 }`;
 
   try{
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    // Pollinations.ai — serviço de IA gratuito, sem chave/cadastro, compatível com o formato OpenAI.
+    const res = await fetch('https://text.pollinations.ai/openai', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'gpt-3.5-turbo',
+        model: 'openai',
         messages: [
           {role:'system', content: promptSistema},
           {role:'user', content: promptUsuario}
@@ -864,15 +852,18 @@ Responda SOMENTE em JSON válido, nesse formato exato:
         temperature: 0.3
       })
     });
-    if(!res.ok){
-      const errJson = await res.json().catch(()=>null);
-      const msg = errJson && errJson.error && errJson.error.message ? errJson.error.message : `OpenAI respondeu ${res.status}`;
-      throw new Error(msg);
-    }
-    const data = await res.json();
-    const textoResposta = data.choices && data.choices[0] && data.choices[0].message ? data.choices[0].message.content : '';
+    if(!res.ok) throw new Error(`Serviço de IA respondeu ${res.status}`);
+    const textoBruto = await res.text();
+    let textoResposta = textoBruto;
+    try{
+      const data = JSON.parse(textoBruto);
+      textoResposta = (data.choices && data.choices[0] && data.choices[0].message) ? data.choices[0].message.content : textoBruto;
+    }catch(e){ /* resposta já é texto puro, usa direto */ }
     const limpo = textoResposta.replace(/```json|```/g,'').trim();
-    const parsed = JSON.parse(limpo);
+    const inicio = limpo.indexOf('{');
+    const fim = limpo.lastIndexOf('}');
+    const jsonStr = (inicio>=0 && fim>=0) ? limpo.slice(inicio, fim+1) : limpo;
+    const parsed = JSON.parse(jsonStr);
     const produtoEncontrado = parsed.produto_equivalente_codigo ? state.produtos.find(p=>p.codigo===parsed.produto_equivalente_codigo) : null;
     comp.resultado = {
       especificacoes: parsed.especificacoes_solicitado || [],
@@ -946,17 +937,7 @@ function viewOrcamento(){
         <div class="section-title" style="margin:0;">Comparador de Produtos</div>
         <button class="btn-secondary" id="btn-add-comparacao" style="display:inline-flex;align-items:center;gap:6px;">${ICONS.plus} Adicionar comparação</button>
       </div>
-      <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">Cliente pediu um modelo específico? Digite-o e veja as especificações dele lado a lado com o que temos em estoque.</div>
-
-      <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:14px;">
-        <label style="margin-bottom:6px;">Chave da API OpenAI (usada apenas neste navegador)</label>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <input type="password" id="openai-key-input" style="flex:1;min-width:220px;" placeholder="sk-..." value="${escapeHtml(getOpenAIKey())}">
-        </div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:8px;line-height:1.5;">
-          Gere a sua em <a href="https://platform.openai.com/api-keys" target="_blank" style="color:var(--teal);">platform.openai.com/api-keys</a>. O modelo usado (gpt-3.5-turbo) é de baixo custo, mas <strong>não é gratuito</strong> — a OpenAI cobra por uso (poucos centavos de dólar por comparação). Trate a chave como uma senha.
-        </div>
-      </div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">Cliente pediu um modelo específico? Digite-o e veja as especificações dele lado a lado com o que temos em estoque. Gratuito, sem chave de API.</div>
 
       ${d.comparacoes.length ? d.comparacoes.map((c,idx)=>`
         <div class="card" style="margin-bottom:12px;padding:14px;">
@@ -2098,10 +2079,6 @@ function attachHandlers(){
   });
 
   // Comparador de produtos
-  const openaiKeyInput = document.getElementById('openai-key-input');
-  if(openaiKeyInput) openaiKeyInput.addEventListener('input', (e)=>{
-    try{ localStorage.setItem('tigers_openai_key', e.target.value.trim()); }catch(err){}
-  });
   const btnAddComparacao = document.getElementById('btn-add-comparacao');
   if(btnAddComparacao) btnAddComparacao.addEventListener('click', ()=>{
     state.draft.comparacoes.push({id:uid(), solicitado:'', loading:false, resultado:null});

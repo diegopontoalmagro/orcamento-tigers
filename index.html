@@ -290,7 +290,7 @@ function scheduleCloudSync(){
   cloudSyncTimer = setTimeout(async ()=>{
     cloudSyncStatus = 'syncing';
     try{
-      await ghUpdateGist(token, gistId, {produtos: state.produtos, orcamentos: state.orcamentos, vendas: state.vendas, atualizadoEm: Date.now()});
+      await ghUpdateGist(token, gistId, {produtos: state.produtos, orcamentos: state.orcamentos, presupuestosPy: state.presupuestosPy, vendas: state.vendas, atualizadoEm: Date.now()});
       cloudSyncStatus = 'ok';
     }catch(e){
       cloudSyncStatus = 'error';
@@ -307,7 +307,7 @@ async function createAutoGist(){
   toast('Criando Gist no GitHub...');
   lastSyncDebug = [];
   try{
-    const id = await ghCreateGist(token, {produtos: state.produtos, orcamentos: state.orcamentos, vendas: state.vendas, atualizadoEm: Date.now()});
+    const id = await ghCreateGist(token, {produtos: state.produtos, orcamentos: state.orcamentos, presupuestosPy: state.presupuestosPy, vendas: state.vendas, atualizadoEm: Date.now()});
     localStorage.setItem('tigers_gh_token', token);
     localStorage.setItem('tigers_gh_gist_id', id);
     cloudSyncStatus = 'ok';
@@ -333,6 +333,7 @@ async function connectGithubSync(){
     state.produtos = Array.isArray(data.produtos) ? data.produtos : [];
     state.orcamentos = Array.isArray(data.orcamentos) ? data.orcamentos : [];
     state.vendas = Array.isArray(data.vendas) ? data.vendas : [];
+    state.presupuestosPy = Array.isArray(data.presupuestosPy) ? data.presupuestosPy : [];
     localStorage.setItem('tigers_gh_token', token);
     localStorage.setItem('tigers_gh_gist_id', gistId);
     localStorage.setItem('tigers_produtos', JSON.stringify(state.produtos));
@@ -368,6 +369,7 @@ let state = {
   view: 'dashboard',
   produtos: [],
   orcamentos: [],
+  presupuestosPy: [],
   vendas: [],
   draft: {
     cliente: '',
@@ -379,11 +381,17 @@ let state = {
     itens: [], // {codigo,nome,categoria,precoMinUsd,quantidade}
     comparacoes: [] // {id, solicitado, loading, resultado}
   },
+  presupuestoPyDraft: null, // quando não-nulo, formulário de Presupuesto Paraguay está aberto
+  editingPresupuestoPyId: null,
   vendaDraft: null, // quando não-nulo, formulário de venda está aberto (novo ou edição)
   produtoSearch: '',
   produtoCategoriaFiltro: '',
   editingOrcamentoId: null
 };
+
+function novoPresupuestoPyDraft(){
+  return { id:null, cliente:'', data: new Date().toISOString().slice(0,10), itens:[] }; // itens: {codigo,nome,quantidade,sIva}
+}
 
 function novoVendaDraft(){
   return { id:null, notaFiscal:'', codigoCliente:'', nomeCliente:'', diaCompra:'', valor:'', obs:'', categorias:[], produtos:[], novoIntegrador:false, atribuidaDiego:false };
@@ -495,7 +503,8 @@ const ICONS = {
   users: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 20v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 5 18.5V20"/><circle cx="9.5" cy="7.5" r="3.2"/><path d="M16 8.2a2.8 2.8 0 0 1 0 5.4M19 20v-1.4a3 3 0 0 0-2-2.8"/></svg>',
   sync: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 16v4h4M21 8V4h-4"/></svg>',
   vendas: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18"/><path d="M7 15l4-5 4 3 5-7"/></svg>',
-  star: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.7 6.9-6.3-3.8-6.3 3.8 1.7-6.9-5.4-4.7 7.1-.6z"/></svg>'
+  star: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.7 6.9-6.3-3.8-6.3 3.8 1.7-6.9-5.4-4.7 7.1-.6z"/></svg>',
+  flag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 21V4"/><path d="M5 4h14l-3 4 3 4H5"/></svg>'
 };
 
 /* ===================== NAV ===================== */
@@ -505,6 +514,7 @@ const NAV_ITEMS = [
   {id:'kpis', label:'KPIs', icon:'target'},
   {id:'produtos', label:'Produtos', icon:'produtos'},
   {id:'orcamento', label:'Novo Orçamento', icon:'orcamento'},
+  {id:'presupuesto-py', label:'Presupuesto Paraguay', icon:'flag'},
   {id:'historico', label:'Histórico', icon:'historico'},
   {id:'sync', label:'Sincronização', icon:'sync'}
 ];
@@ -538,6 +548,7 @@ function render(){
   else if(state.view==='produtos') main.innerHTML = viewProdutos();
   else if(state.view==='orcamento') main.innerHTML = viewOrcamento();
   else if(state.view==='historico') main.innerHTML = viewHistorico();
+  else if(state.view==='presupuesto-py') main.innerHTML = viewPresupuestoPy();
   else if(state.view==='sync') main.innerHTML = viewSync();
   else if(state.view==='vendas') main.innerHTML = viewVendas();
   else if(state.view==='kpis') main.innerHTML = viewKPIs();
@@ -831,12 +842,18 @@ async function compararProduto(idx){
 Aqui está uma lista de produtos do nosso catálogo (código | categoria | nome | estoque | preço USD):
 ${catalogoResumo}
 
+Só indique um produto_equivalente_codigo se ele REALMENTE puder substituir o solicitado: especificações compatíveis (mesma categoria/função, capacidade similar) E preço próximo ou melhor (não escolha algo muito mais caro). Se nenhum produto do catálogo for um substituto razoável, retorne produto_equivalente_codigo como null — não force uma sugestão fraca.
+
 Responda SOMENTE em JSON válido, nesse formato exato:
 {
-  "especificacoes_solicitado": ["especificação 1", "especificação 2", "especificação 3", "especificação 4"],
-  "produto_equivalente_codigo": "CODIGO_DO_CATALOGO_ACIMA ou null se não houver equivalente razoável",
-  "motivo": "explicação comparando vantagens, desvantagens e custo-benefício do produto do catálogo frente ao solicitado (2-4 frases), ou por que não há equivalente em estoque"
-}`;
+  "produto_equivalente_codigo": "CODIGO_DO_CATALOGO_ACIMA ou null",
+  "comparacao": [
+    {"especificacao": "nome da especificação (ex: Portas, PoE, Alcance, Resolução, Preço)", "solicitado": "valor para o produto pedido", "nosso": "valor equivalente do nosso produto, ou \\"-\\" se produto_equivalente_codigo for null"},
+    {"especificacao": "...", "solicitado": "...", "nosso": "..."}
+  ],
+  "motivo": "se houver equivalente: 2-3 frases dizendo se o nosso é melhor, igual ou levemente inferior, e por quê vale a pena. Se NÃO houver: explique objetivamente por que nenhum produto do catálogo atende."
+}
+Inclua de 4 a 6 linhas em "comparacao", cobrindo as especificações mais relevantes para esse tipo de produto.`;
 
   try{
     // Pollinations.ai — serviço de IA gratuito, sem chave/cadastro, compatível com o formato OpenAI.
@@ -866,7 +883,7 @@ Responda SOMENTE em JSON válido, nesse formato exato:
     const parsed = JSON.parse(jsonStr);
     const produtoEncontrado = parsed.produto_equivalente_codigo ? state.produtos.find(p=>p.codigo===parsed.produto_equivalente_codigo) : null;
     comp.resultado = {
-      especificacoes: parsed.especificacoes_solicitado || [],
+      comparacao: Array.isArray(parsed.comparacao) ? parsed.comparacao : [],
       produtoEncontrado: produtoEncontrado || null,
       motivo: parsed.motivo || ''
     };
@@ -948,28 +965,37 @@ function viewOrcamento(){
           </div>
           ${c.resultado ? (c.resultado.erro ? `
             <div style="font-size:13px;color:var(--danger);">${escapeHtml(c.resultado.mensagemErro || 'Não consegui gerar a comparação. Tente novamente.')}</div>
-          ` : `
-            <div class="grid grid-2">
-              <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:12px;">
-                <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">Solicitado pelo cliente</div>
-                <ul style="margin:0;padding-left:18px;font-size:13px;color:var(--text);line-height:1.6;">
-                  ${(c.resultado.especificacoes||[]).map(e=>`<li>${escapeHtml(e)}</li>`).join('') || '<li>Sem especificações reconhecidas.</li>'}
-                </ul>
-              </div>
-              <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:12px;">
-                <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">Disponível em nosso estoque</div>
-                ${c.resultado.produtoEncontrado ? `
-                  <div style="font-size:13px;"><strong>${escapeHtml(c.resultado.produtoEncontrado.nome)}</strong></div>
-                  <div class="mono" style="font-size:12px;color:var(--text-muted);margin:4px 0;">${escapeHtml(c.resultado.produtoEncontrado.codigo)} · estoque: ${c.resultado.produtoEncontrado.estoque} · ${fmtUSD(c.resultado.produtoEncontrado.precoMinUsd)}</div>
-                  <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">${escapeHtml(c.resultado.motivo||'')}</div>
-                  <button class="btn-primary btn-add-comparado" data-idx="${idx}" style="font-size:12px;padding:7px 12px;">Adicionar ao orçamento</button>
-                ` : `
-                  <div style="font-size:13px;color:var(--danger);margin-bottom:6px;">Não temos um equivalente em estoque.</div>
-                  <div style="font-size:12px;color:var(--text-muted);">${escapeHtml(c.resultado.motivo||'')}</div>
-                `}
-              </div>
+          ` : (c.resultado.produtoEncontrado ? `
+            <div style="overflow-x:auto;margin-bottom:10px;">
+            <table>
+              <thead><tr>
+                <th>Especificação</th>
+                <th>Cliente pediu</th>
+                <th>${escapeHtml(c.resultado.produtoEncontrado.nome)} <span class="mono" style="color:var(--text-muted);">(${escapeHtml(c.resultado.produtoEncontrado.codigo)})</span></th>
+              </tr></thead>
+              <tbody>
+                ${(c.resultado.comparacao||[]).map(row=>`
+                  <tr>
+                    <td style="color:var(--text-muted);font-size:12px;">${escapeHtml(row.especificacao||'')}</td>
+                    <td style="font-size:13px;">${escapeHtml(row.solicitado||'')}</td>
+                    <td style="font-size:13px;color:var(--teal);">${escapeHtml(row.nosso||'')}</td>
+                  </tr>`).join('')}
+                <tr>
+                  <td style="color:var(--text-muted);font-size:12px;">Preço / Estoque</td>
+                  <td style="font-size:13px;color:var(--text-muted);">—</td>
+                  <td class="mono" style="font-size:13px;color:var(--teal);">${fmtUSD(c.resultado.produtoEncontrado.precoMinUsd)} · estoque: ${c.resultado.produtoEncontrado.estoque}</td>
+                </tr>
+              </tbody>
+            </table>
             </div>
-          `) : '<div style="font-size:12px;color:var(--text-muted);">Clique em "Comparar com estoque" para gerar a análise.</div>'}
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">${escapeHtml(c.resultado.motivo||'')}</div>
+            <button class="btn-primary btn-add-comparado" data-idx="${idx}" style="font-size:12px;padding:7px 12px;">Adicionar ao orçamento</button>
+          ` : `
+            <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:14px;">
+              <div style="font-size:13px;color:var(--danger);font-weight:600;margin-bottom:8px;">Não temos algo parecido em estoque</div>
+              <div style="font-size:12px;color:var(--text-muted);">${escapeHtml(c.resultado.motivo||'')}</div>
+            </div>
+          `)) : '<div style="font-size:12px;color:var(--text-muted);">Clique em "Comparar com estoque" para gerar a análise.</div>'}
         </div>
       `).join('') : emptyState('Nenhuma comparação adicionada. Clique em "Adicionar comparação" para começar.')}
     </div>
@@ -1065,7 +1091,174 @@ function viewHistorico(){
   `;
 }
 
-/* ===================== SINCRONIZAÇÃO ===================== */
+/* ===================== PRESUPUESTO PARAGUAY (FLUXO SEPARADO, IVA 10%) ===================== */
+function calcPresupuestoPyLine(item){
+  const sIva = Number(item.sIva)||0;
+  const cIva = sIva * 1.1;
+  const qtd = Number(item.quantidade)||0;
+  return { sIva, cIva, subtotalSIva: sIva*qtd, subtotalCIva: cIva*qtd };
+}
+
+function calcPresupuestoPyTotal(draft){
+  return draft.itens.reduce((s,it)=> s + calcPresupuestoPyLine(it).subtotalCIva, 0);
+}
+
+function viewPresupuestoPy(){
+  const draft = state.presupuestoPyDraft;
+  const lista = [...state.presupuestosPy].sort((a,b)=> (b.data||'').localeCompare(a.data||''));
+
+  return `
+    <div class="page-header">
+      <div>
+        <div class="page-title">Presupuesto Paraguay</div>
+        <div class="page-desc">Orçamento com IVA 10% — fluxo separado do orçamento padrão</div>
+      </div>
+      ${!draft ? `<button class="btn-primary" id="btn-novo-presupuesto-py" style="display:inline-flex;align-items:center;gap:6px;">${ICONS.plus} Novo presupuesto</button>` : ''}
+    </div>
+
+    ${draft ? `
+    <div class="card" style="margin-bottom:18px;">
+      <div class="section-title" style="margin-bottom:16px;">${draft.id ? 'Editar presupuesto' : 'Nuevo presupuesto'}</div>
+      <div class="grid grid-2" style="margin-bottom:18px;gap:18px;">
+        <div><label>Cliente</label><input id="py-cliente" value="${escapeHtml(draft.cliente)}" placeholder="Nombre del cliente / empresa"></div>
+        <div><label>Fecha</label><input type="date" id="py-data" value="${draft.data}"></div>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <div class="section-title" style="margin:0;">Ítems</div>
+        <button class="btn-secondary" id="btn-add-item-py" style="display:inline-flex;align-items:center;gap:6px;">${ICONS.plus} Agregar ítem</button>
+      </div>
+      ${draft.itens.length ? `
+      <div style="overflow-x:auto;">
+      <table>
+        <thead><tr>
+          <th style="min-width:60px;">Cantidad</th>
+          <th style="min-width:220px;">Producto</th>
+          <th class="right">s/IVA (U$)</th>
+          <th class="right">c/IVA (U$)</th>
+          <th></th>
+        </tr></thead>
+        <tbody>
+          ${draft.itens.map((it,idx)=>{
+            const calc = calcPresupuestoPyLine(it);
+            return `
+            <tr>
+              <td><input type="number" min="0" step="1" class="py-item-qtd right mono" data-idx="${idx}" value="${it.quantidade}" style="width:70px;"></td>
+              <td><input data-idx="${idx}" class="py-produto-input mono" autocomplete="off" value="${it.codigo ? escapeHtml(it.codigo+' — '+it.nome) : ''}" placeholder="Buscar producto..."></td>
+              <td><input type="number" min="0" step="0.01" class="py-item-siva right mono" data-idx="${idx}" value="${Number(it.sIva).toFixed(2)}" style="width:100px;"></td>
+              <td class="right mono" id="py-civa-${idx}">${fmtUSD(calc.subtotalCIva)}</td>
+              <td class="center"><button class="icon-btn danger py-item-remove" data-idx="${idx}">${ICONS.trash}</button></td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin-top:16px;">
+        <div class="totals-box" style="min-width:260px;">
+          <div class="totals-row final" id="py-total-row"><span>Total general c/IVA</span><span class="v">${fmtUSD(calcPresupuestoPyTotal(draft))}</span></div>
+        </div>
+      </div>
+      ` : emptyState('Ningún ítem agregado. Clique en "Agregar ítem" para empezar.')}
+
+      <div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap;">
+        <button class="btn-primary" id="btn-salvar-presupuesto-py">Guardar presupuesto</button>
+        <button class="btn-secondary" id="btn-export-pdf-py" style="display:inline-flex;align-items:center;gap:6px;">${ICONS.pdf} Exportar PDF</button>
+        <button class="btn-ghost" id="btn-cancelar-presupuesto-py">Cancelar</button>
+      </div>
+    </div>
+    ` : ''}
+
+    <div class="card">
+      <div class="section-title" style="margin-bottom:16px;">Presupuestos guardados</div>
+      ${lista.length ? `
+      <div style="overflow-x:auto;">
+      <table>
+        <thead><tr><th>Cliente</th><th>Fecha</th><th class="right">Ítems</th><th class="right">Total c/IVA</th><th></th></tr></thead>
+        <tbody>
+          ${lista.map(p=>`
+            <tr>
+              <td>${escapeHtml(p.cliente||'Sin nombre')}</td>
+              <td class="mono">${p.data ? new Date(p.data+'T00:00:00').toLocaleDateString('pt-BR') : '-'}</td>
+              <td class="right mono">${p.itens.length}</td>
+              <td class="right mono">${fmtUSD(calcPresupuestoPyTotal(p))}</td>
+              <td class="center" style="white-space:nowrap;">
+                <button class="icon-btn py-edit" data-id="${p.id}" title="Editar">${ICONS.edit}</button>
+                <button class="icon-btn py-pdf" data-id="${p.id}" title="PDF">${ICONS.pdf}</button>
+                <button class="icon-btn danger py-delete" data-id="${p.id}" title="Excluir">${ICONS.trash}</button>
+              </td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+      </div>` : emptyState('Ningún presupuesto guardado todavía.')}
+    </div>
+  `;
+}
+
+function refreshPresupuestoPyTotals(){
+  const d = state.presupuestoPyDraft;
+  if(!d) return;
+  d.itens.forEach((it,idx)=>{
+    const calc = calcPresupuestoPyLine(it);
+    const el = document.getElementById('py-civa-'+idx);
+    if(el) el.textContent = fmtUSD(calc.subtotalCIva);
+  });
+  const totalRow = document.getElementById('py-total-row');
+  if(totalRow) totalRow.innerHTML = `<span>Total general c/IVA</span><span class="v">${fmtUSD(calcPresupuestoPyTotal(d))}</span>`;
+}
+
+function exportPresupuestoPyPDF(payload){
+  if(!payload.itens.length){ toast('Agregue al menos un ítem antes de exportar.', true); return; }
+  if(!window.jspdf){ toast('El generador de PDF aún no cargó. Verifique su internet e intente de nuevo.', true); return; }
+  try{
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(16);
+    doc.setTextColor(40,40,40);
+    doc.text('Tigers del Este', 14, 18);
+    doc.setFontSize(10);
+    doc.setFont('helvetica','normal');
+    doc.setTextColor(110,110,110);
+    doc.text('Presupuesto (IVA 10% incluido)', 14, 24);
+    doc.text(`Cliente: ${payload.cliente || '-'}`, 14, 34);
+    doc.text(`Fecha: ${payload.data ? new Date(payload.data+'T00:00:00').toLocaleDateString('es-PY') : '-'}`, 14, 40);
+
+    doc.autoTable({
+      startY: 48,
+      head: [['Cantidad','Producto','s/IVA (U$)','c/IVA (U$)','Subtotal c/IVA']],
+      body: payload.itens.map(it=>{
+        const calc = calcPresupuestoPyLine(it);
+        return [it.quantidade, it.nome, fmtUSD(calc.sIva), fmtUSD(calc.cIva), fmtUSD(calc.subtotalCIva)];
+      }),
+      styles:{fontSize:9},
+      headStyles:{fillColor:[26,32,40], textColor:255},
+      theme:'striped'
+    });
+
+    const total = calcPresupuestoPyTotal(payload);
+    doc.autoTable({
+      startY: doc.lastAutoTable.finalY + 8,
+      body: [['TOTAL GENERAL c/IVA', fmtUSD(total)]],
+      theme: 'plain',
+      margin: { left: 100, right: 14 },
+      styles:{ fontSize: 12, fontStyle:'bold', textColor:[20,20,20], cellPadding: {top:4, bottom:4} },
+      columnStyles: { 0:{halign:'left'}, 1:{halign:'right'} }
+    });
+
+    let y = doc.lastAutoTable.finalY + 14;
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(9);
+    doc.setTextColor(140);
+    doc.text('Tigers del Este — Ciudad del Este, Paraguay  ·  WhatsApp: +595 973 757761', 14, Math.max(y, 280));
+
+    const blob = doc.output('blob');
+    downloadBlob(blob, `presupuesto_py_${(payload.cliente||'cliente').replace(/\s+/g,'_')}.pdf`);
+  }catch(err){
+    toast('No conseguí generar el PDF. Intente de nuevo.', true);
+  }
+}
+
+
 function viewSync(){
   const {token, gistId} = getGhCreds();
   const connected = hasGhSync();
@@ -1782,6 +1975,8 @@ function selectProdutoForItem(codigo){
   }else if(ctx.type === 'venda'){
     state.vendaDraft.produtos[ctx.idx] = {...state.vendaDraft.produtos[ctx.idx], codigo:p.codigo, nome:p.nome, preco:p.precoMinUsd};
     recalcularValorVenda();
+  }else if(ctx.type === 'presupuesto'){
+    state.presupuestoPyDraft.itens[ctx.idx] = {...state.presupuestoPyDraft.itens[ctx.idx], codigo:p.codigo, nome:p.nome, sIva:p.precoMinUsd};
   }
   closeProdutoDropdown();
   render();
@@ -1797,7 +1992,7 @@ function closeProdutoDropdown(){
 window.addEventListener('click', (e)=>{
   const dd = document.getElementById('produto-dropdown');
   if(!dd || dd.classList.contains('hidden')) return;
-  if(dd.contains(e.target) || e.target.classList.contains('item-produto-input') || e.target.classList.contains('venda-produto-input')) return;
+  if(dd.contains(e.target) || e.target.classList.contains('item-produto-input') || e.target.classList.contains('venda-produto-input') || e.target.classList.contains('py-produto-input')) return;
   closeProdutoDropdown();
 });
 window.addEventListener('scroll', ()=>{ closeProdutoDropdown(); }, true);
@@ -2078,6 +2273,103 @@ function attachHandlers(){
     if(file) handleVendaExcelImport(file);
   });
 
+  // Presupuesto Paraguay (fluxo separado)
+  const btnNovoPresupuestoPy = document.getElementById('btn-novo-presupuesto-py');
+  if(btnNovoPresupuestoPy) btnNovoPresupuestoPy.addEventListener('click', ()=>{
+    state.presupuestoPyDraft = novoPresupuestoPyDraft();
+    state.editingPresupuestoPyId = null;
+    render();
+  });
+  const btnCancelarPresupuestoPy = document.getElementById('btn-cancelar-presupuesto-py');
+  if(btnCancelarPresupuestoPy) btnCancelarPresupuestoPy.addEventListener('click', ()=>{
+    state.presupuestoPyDraft = null;
+    state.editingPresupuestoPyId = null;
+    render();
+  });
+  const pyCliente = document.getElementById('py-cliente');
+  if(pyCliente) pyCliente.addEventListener('input', (e)=>{ state.presupuestoPyDraft.cliente = e.target.value; });
+  const pyData = document.getElementById('py-data');
+  if(pyData) pyData.addEventListener('input', (e)=>{ state.presupuestoPyDraft.data = e.target.value; });
+  const btnAddItemPy = document.getElementById('btn-add-item-py');
+  if(btnAddItemPy) btnAddItemPy.addEventListener('click', ()=>{
+    state.presupuestoPyDraft.itens.push({codigo:'', nome:'', quantidade:1, sIva:0});
+    render();
+  });
+  document.querySelectorAll('.py-produto-input').forEach(el=>{
+    const idx = Number(el.getAttribute('data-idx'));
+    el.addEventListener('focus', (e)=> openProdutoDropdown('presupuesto', idx, e.target));
+    el.addEventListener('input', (e)=>{
+      if(!(activeDropdownContext && activeDropdownContext.type==='presupuesto' && activeDropdownContext.idx===idx)) openProdutoDropdown('presupuesto', idx, e.target);
+      else { positionProdutoDropdown(e.target); filterProdutoDropdown(e.target.value); }
+    });
+  });
+  document.querySelectorAll('.py-item-qtd').forEach(el=>{
+    el.addEventListener('input', (e)=>{
+      const idx = Number(e.target.getAttribute('data-idx'));
+      state.presupuestoPyDraft.itens[idx].quantidade = Number(e.target.value)||0;
+      refreshPresupuestoPyTotals();
+    });
+  });
+  document.querySelectorAll('.py-item-siva').forEach(el=>{
+    el.addEventListener('input', (e)=>{
+      const idx = Number(e.target.getAttribute('data-idx'));
+      state.presupuestoPyDraft.itens[idx].sIva = Number(e.target.value)||0;
+      refreshPresupuestoPyTotals();
+    });
+  });
+  document.querySelectorAll('.py-item-remove').forEach(el=>{
+    el.addEventListener('click', (e)=>{
+      const idx = Number(e.currentTarget.getAttribute('data-idx'));
+      state.presupuestoPyDraft.itens.splice(idx,1);
+      render();
+    });
+  });
+  const btnSalvarPresupuestoPy = document.getElementById('btn-salvar-presupuesto-py');
+  if(btnSalvarPresupuestoPy) btnSalvarPresupuestoPy.addEventListener('click', ()=>{
+    const d = state.presupuestoPyDraft;
+    if(!d.itens.length){ toast('Agregue al menos un ítem antes de guardar.', true); return; }
+    if(state.editingPresupuestoPyId){
+      const idx = state.presupuestosPy.findIndex(p=>p.id===state.editingPresupuestoPyId);
+      if(idx>-1) state.presupuestosPy[idx] = {...d, id: state.editingPresupuestoPyId};
+    }else{
+      state.presupuestosPy.push({...d, id: uid()});
+    }
+    DB.set('presupuestosPy', state.presupuestosPy);
+    state.presupuestoPyDraft = null;
+    state.editingPresupuestoPyId = null;
+    toast('Presupuesto guardado con éxito.');
+    render();
+  });
+  const btnExportPdfPy = document.getElementById('btn-export-pdf-py');
+  if(btnExportPdfPy) btnExportPdfPy.addEventListener('click', ()=> exportPresupuestoPyPDF(state.presupuestoPyDraft));
+  document.querySelectorAll('.py-edit').forEach(el=>{
+    el.addEventListener('click', (e)=>{
+      const id = e.currentTarget.getAttribute('data-id');
+      const p = state.presupuestosPy.find(x=>x.id===id);
+      if(p){
+        state.presupuestoPyDraft = {...p, itens: p.itens.map(it=>({...it}))};
+        state.editingPresupuestoPyId = id;
+      }
+      render();
+    });
+  });
+  document.querySelectorAll('.py-pdf').forEach(el=>{
+    el.addEventListener('click', (e)=>{
+      const id = e.currentTarget.getAttribute('data-id');
+      const p = state.presupuestosPy.find(x=>x.id===id);
+      if(p) exportPresupuestoPyPDF(p);
+    });
+  });
+  document.querySelectorAll('.py-delete').forEach(el=>{
+    el.addEventListener('click', (e)=>{
+      const id = e.currentTarget.getAttribute('data-id');
+      state.presupuestosPy = state.presupuestosPy.filter(x=>x.id!==id);
+      DB.set('presupuestosPy', state.presupuestosPy);
+      render();
+      toast('Presupuesto eliminado.');
+    });
+  });
+
   // Comparador de produtos
   const btnAddComparacao = document.getElementById('btn-add-comparacao');
   if(btnAddComparacao) btnAddComparacao.addEventListener('click', ()=>{
@@ -2154,6 +2446,7 @@ async function init(){
         state.produtos = Array.isArray(data.produtos) ? data.produtos : [];
         state.orcamentos = Array.isArray(data.orcamentos) ? data.orcamentos : [];
         state.vendas = Array.isArray(data.vendas) ? data.vendas : [];
+    state.presupuestosPy = Array.isArray(data.presupuestosPy) ? data.presupuestosPy : [];
         localStorage.setItem('tigers_produtos', JSON.stringify(state.produtos));
         localStorage.setItem('tigers_orcamentos', JSON.stringify(state.orcamentos));
         localStorage.setItem('tigers_vendas', JSON.stringify(state.vendas));
@@ -2169,6 +2462,7 @@ async function init(){
   state.produtos = await DB.get('produtos', []);
   state.orcamentos = await DB.get('orcamentos', []);
   state.vendas = await DB.get('vendas', []);
+  state.presupuestosPy = await DB.get('presupuestosPy', []);
   render();
 }
 init();

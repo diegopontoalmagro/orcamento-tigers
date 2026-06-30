@@ -138,6 +138,13 @@ tr:hover td{background:rgba(255,255,255,.015);}
 .kpi-card .kpi-icon svg{width:30px;height:30px;display:block;}
 .kpi-card .kpi-value{font-family:var(--mono);font-size:30px;font-weight:700;line-height:1.1;}
 .kpi-card .kpi-label{font-size:12.5px;color:var(--text-muted);margin-top:6px;}
+.flash-highlight{animation:flashBorder 1.2s ease;}
+@keyframes flashBorder{0%{box-shadow:0 0 0 3px var(--amber);}100%{box-shadow:0 0 0 0px transparent;}}
+
+.login-screen{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px;}
+.login-box{width:100%;max-width:340px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:32px 28px;position:relative;overflow:hidden;}
+.login-box::before{content:"";position:absolute;top:0;left:0;height:3px;width:100%;background:linear-gradient(90deg,var(--amber),var(--stripe) 40%,transparent 70%);}
+.login-error{font-size:12.5px;color:var(--danger);background:rgba(239,69,101,.1);border:1px solid rgba(239,69,101,.3);border-radius:7px;padding:8px 10px;}
 
 .hidden{display:none !important;}
 ::-webkit-scrollbar{height:8px;width:8px;}
@@ -160,7 +167,24 @@ tr:hover td{background:rgba(255,255,255,.015);}
 </style>
 </head>
 <body>
-<div id="root">
+<div id="login-screen" class="login-screen">
+  <div class="login-box">
+    <div class="brand" style="border:none;padding:0;margin-bottom:22px;justify-content:center;">
+      <span class="stripes"><span></span><span></span><span></span></span>
+      <div>
+        <div class="brand-name">Tigers del Este</div>
+        <div class="brand-sub">Orçamentos &amp; Catálogo</div>
+      </div>
+    </div>
+    <label>Usuário</label>
+    <input id="login-user" autocomplete="username" placeholder="Usuário" style="margin-bottom:14px;">
+    <label>Senha</label>
+    <input id="login-pass" type="password" autocomplete="current-password" placeholder="Senha" style="margin-bottom:18px;">
+    <div id="login-error" class="login-error hidden">Usuário ou senha incorretos.</div>
+    <button class="btn-primary" id="btn-login" style="width:100%;">Entrar</button>
+  </div>
+</div>
+<div id="root" class="hidden">
   <nav class="sidebar">
     <div class="brand">
       <span class="stripes"><span></span><span></span><span></span></span>
@@ -172,7 +196,8 @@ tr:hover td{background:rgba(255,255,255,.015);}
     <div id="nav"></div>
     <div class="sidebar-footer">
       Use o menu "Sincronização" para acessar de qualquer lugar.<br>
-      WhatsApp: <a href="https://wa.me/595973757761" target="_blank">+595 973 757761</a>
+      WhatsApp: <a href="https://wa.me/595973757761" target="_blank">+595 973 757761</a><br>
+      <a href="#" id="btn-logout" style="color:var(--text-muted);">Sair</a>
     </div>
   </nav>
   <main id="main"></main>
@@ -182,6 +207,51 @@ tr:hover td{background:rgba(255,255,255,.015);}
 <div id="toast-root"></div>
 
 <script>
+/* ===================== LOGIN ===================== */
+const APP_USER = 'diegodonat';
+const APP_PASS = 'Tigers112233';
+
+function isLoggedIn(){
+  try{ return sessionStorage.getItem('tigers_logged_in') === '1'; }catch(e){ return false; }
+}
+
+function doLogin(){
+  const user = (document.getElementById('login-user')||{}).value || '';
+  const pass = (document.getElementById('login-pass')||{}).value || '';
+  const errEl = document.getElementById('login-error');
+  if(user.trim() === APP_USER && pass === APP_PASS){
+    try{ sessionStorage.setItem('tigers_logged_in', '1'); }catch(e){}
+    document.getElementById('login-screen').classList.add('hidden');
+    document.getElementById('root').classList.remove('hidden');
+    if(typeof init === 'function') init();
+  }else{
+    if(errEl) errEl.classList.remove('hidden');
+  }
+}
+
+function doLogout(){
+  try{ sessionStorage.removeItem('tigers_logged_in'); }catch(e){}
+  location.reload();
+}
+
+function initLoginScreen(){
+  if(isLoggedIn()){
+    document.getElementById('login-screen').classList.add('hidden');
+    document.getElementById('root').classList.remove('hidden');
+    return true;
+  }
+  const btnLogin = document.getElementById('btn-login');
+  if(btnLogin) btnLogin.addEventListener('click', doLogin);
+  const passInput = document.getElementById('login-pass');
+  if(passInput) passInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter') doLogin(); });
+  const userInput = document.getElementById('login-user');
+  if(userInput) userInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter') doLogin(); });
+  return false;
+}
+const __wasLoggedInAtLoad = initLoginScreen();
+const __logoutLink = document.getElementById('btn-logout');
+if(__logoutLink) __logoutLink.addEventListener('click', (e)=>{ e.preventDefault(); doLogout(); });
+
 /* ===================== STORAGE ===================== */
 /* Dados salvos no navegador deste dispositivo (localStorage), com sincronização
    opcional entre dispositivos via um "código de sincronização" (jsonblob.com). */
@@ -1484,7 +1554,7 @@ function viewVendas(){
     </div>
 
     ${draft ? `
-    <div class="card" style="margin-bottom:28px;">
+    <div class="card" id="venda-form-card" style="margin-bottom:28px;">
       <div class="section-title" style="margin-bottom:18px;">${draft.id ? 'Editar venda' : 'Nova venda'}</div>
       <div class="grid grid-2" style="margin-bottom:20px;gap:18px;">
         <div><label>Nota Fiscal</label><input id="v-nota" value="${escapeHtml(draft.notaFiscal)}" placeholder="Ex: 121633"></div>
@@ -2254,8 +2324,18 @@ function attachHandlers(){
     el.addEventListener('click', (e)=>{
       const id = e.currentTarget.getAttribute('data-id');
       const v = state.vendas.find(x=>x.id===id);
-      if(v) state.vendaDraft = {...v, categorias:[...(v.categorias||[])], produtos:(v.produtos||[]).map(p=>({...p}))};
-      render();
+      if(v){
+        state.vendaDraft = {...v, categorias:[...(v.categorias||[])], produtos:(v.produtos||[]).map(p=>({...p}))};
+        render();
+        setTimeout(()=>{
+          const form = document.getElementById('venda-form-card');
+          if(form){
+            form.scrollIntoView({behavior:'smooth', block:'start'});
+            form.classList.add('flash-highlight');
+            setTimeout(()=> form.classList.remove('flash-highlight'), 1200);
+          }
+        }, 50);
+      }
     });
   });
   document.querySelectorAll('.venda-delete').forEach(el=>{
@@ -2465,7 +2545,7 @@ async function init(){
   state.presupuestosPy = await DB.get('presupuestosPy', []);
   render();
 }
-init();
+if(__wasLoggedInAtLoad) init();
 </script>
 </body>
 </html>

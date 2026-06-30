@@ -1619,7 +1619,7 @@ function viewVendas(){
               <td class="right mono">${fmtUSD(v.valor)}</td>
               <td style="font-size:12px;color:var(--text-muted);">${escapeHtml(v.obs)}</td>
               <td class="center" style="white-space:nowrap;">
-                <button class="icon-btn venda-edit" data-id="${v.id}" title="Editar">${ICONS.edit}</button>
+                <button class="btn-secondary venda-edit" data-id="${v.id}" style="font-size:12px;padding:7px 12px;display:inline-flex;align-items:center;gap:5px;margin-right:4px;">${ICONS.edit} Editar</button>
                 <button class="icon-btn danger venda-delete" data-id="${v.id}" title="Excluir">${ICONS.trash}</button>
               </td>
             </tr>`).join('')}
@@ -2328,13 +2328,17 @@ function attachHandlers(){
         state.vendaDraft = {...v, categorias:[...(v.categorias||[])], produtos:(v.produtos||[]).map(p=>({...p}))};
         render();
         setTimeout(()=>{
-          const form = document.getElementById('venda-form-card');
-          if(form){
-            form.scrollIntoView({behavior:'smooth', block:'start'});
-            form.classList.add('flash-highlight');
-            setTimeout(()=> form.classList.remove('flash-highlight'), 1200);
-          }
+          try{
+            const form = document.getElementById('venda-form-card');
+            if(form){
+              form.scrollIntoView({behavior:'smooth', block:'start'});
+              form.classList.add('flash-highlight');
+              setTimeout(()=> form.classList.remove('flash-highlight'), 1200);
+            }
+          }catch(err){ /* navegador sem suporte a scrollIntoView suave — o formulário já está visível mesmo assim */ }
         }, 50);
+      }else{
+        toast('Não encontrei essa venda. Atualize a página e tente novamente.', true);
       }
     });
   });

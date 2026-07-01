@@ -909,6 +909,34 @@ function calcTotais(draft){
 }
 
 /* ===================== COMPARADOR DE PRODUTOS (IA) ===================== */
+function repararJSON(raw){
+  try{
+    // tenta direto primeiro
+    JSON.parse(raw);
+    return raw;
+  }catch(e){}
+  let s = raw;
+  // Remove vírgulas antes de } ou ]
+  s = s.replace(/,\s*([}\]])/g, '$1');
+  // Substitui aspas simples por duplas em chaves/valores (cuidado com contrações)
+  s = s.replace(/([{,]\s*)'([^']+)'\s*:/g, '$1"$2":');
+  s = s.replace(/:\s*'([^']*)'/g, ':"$1"');
+  // Remove caracteres de controle dentro de strings
+  s = s.replace(/"([^"\\]*(\\.[^"\\]*)*)"/g, (m)=> m.replace(/[\x00-\x1F\x7F]/g, ' '));
+  // Tenta novamente
+  try{ JSON.parse(s); return s; }catch(e){}
+  // Último recurso: extrai cada campo manualmente com regex
+  const produto = (raw.match(/"produto_equivalente_codigo"\s*:\s*"([^"]*)"/) || [])[1] || null;
+  const motivo = (raw.match(/"motivo"\s*:\s*"([^"]+)"/) || [])[1] || '';
+  const comparacoes = [];
+  const compRe = /"especificacao"\s*:\s*"([^"]*)"\s*,\s*"solicitado"\s*:\s*"([^"]*)"\s*,\s*"nosso"\s*:\s*"([^"]*)"/g;
+  let m;
+  while((m = compRe.exec(raw)) !== null){
+    comparacoes.push({especificacao:m[1], solicitado:m[2], nosso:m[3]});
+  }
+  return JSON.stringify({produto_equivalente_codigo: produto==='null'?null:produto, comparacao:comparacoes, motivo});
+}
+
 async function compararProduto(idx){
   const comp = state.draft.comparacoes[idx];
   if(!comp || !comp.solicitado.trim()){ toast('Digite o produto que o cliente pediu.', true); return; }
@@ -966,7 +994,8 @@ Inclua de 4 a 6 linhas em "comparacao", cobrindo as especificações mais releva
     const inicio = limpo.indexOf('{');
     const fim = limpo.lastIndexOf('}');
     const jsonStr = (inicio>=0 && fim>=0) ? limpo.slice(inicio, fim+1) : limpo;
-    const parsed = JSON.parse(jsonStr);
+    const jsonReparado = repararJSON(jsonStr);
+    const parsed = JSON.parse(jsonReparado);
     const produtoEncontrado = parsed.produto_equivalente_codigo ? state.produtos.find(p=>p.codigo===parsed.produto_equivalente_codigo) : null;
     comp.resultado = {
       comparacao: Array.isArray(parsed.comparacao) ? parsed.comparacao : [],
@@ -1452,27 +1481,30 @@ function viewLucroReal(){
           <th></th>
         </tr></thead>
         <tbody>
-          ${draft.itens.map((it,idx)=>{
+          ${draft.itens.map((it)=>{
+            if(!it.uid) it.uid = uid();
+            const iuid = it.uid;
             const calc = calcLucroRealLine(it, draft);
             return `
             <tr>
-              <td><input type="number" min="0" step="1" class="lr-item-qtd right mono" data-idx="${idx}" value="${it.quantidade}" style="width:60px;"></td>
+              <td><input type="number" min="0" step="1" class="lr-item-qtd right mono" data-uid="${iuid}" value="${it.quantidade}" style="width:60px;"></td>
               <td>
                 ${it.manual ? `
-                  <input data-idx="${idx}" class="lr-produto-manual mono" value="${escapeHtml(it.nome)}" placeholder="Nome do produto (manual)">
-                  <div style="font-size:10px;color:var(--text-muted);margin-top:2px;cursor:pointer;" class="lr-toggle-manual" data-idx="${idx}">← buscar no estoque</div>
+                  <input data-uid="${iuid}" class="lr-produto-manual mono" value="${escapeHtml(it.nome)}" placeholder="Nome do produto (manual)">
+                  <div style="font-size:10px;color:var(--text-muted);margin-top:2px;cursor:pointer;" class="lr-toggle-manual" data-uid="${iuid}">← buscar no estoque</div>
                 ` : `
-                  <input data-idx="${idx}" class="lr-produto-input mono" autocomplete="off" value="${it.codigo ? escapeHtml(it.codigo+' — '+it.nome) : ''}" placeholder="Buscar produto...">
-                  <div style="font-size:10px;color:var(--text-muted);margin-top:2px;cursor:pointer;" class="lr-toggle-manual" data-idx="${idx}">não está no estoque? digitar manualmente</div>
+                  <input data-uid="${iuid}" class="lr-produto-input mono" autocomplete="off" value="${it.codigo ? escapeHtml(it.codigo+' — '+it.nome) : ''}" placeholder="Buscar produto...">
+                  <div style="font-size:10px;color:var(--text-muted);margin-top:2px;cursor:pointer;" class="lr-toggle-manual" data-uid="${iuid}">não está no estoque? digitar manualmente</div>
                 `}
               </td>
-              <td><input type="number" min="0" step="0.01" class="lr-item-pv right mono" data-idx="${idx}" value="${Number(it.precoVendaUsd).toFixed(2)}" style="width:95px;"></td>
-              <td><input type="number" min="0" step="0.01" class="lr-item-cr right mono" data-idx="${idx}" value="${Number(it.custoRealUsd).toFixed(2)}" style="width:95px;"></td>
-              <td class="right mono" id="lr-venda-${idx}">${fmtBRL(calc.vendaBRL)}</td>
-              <td class="right mono" id="lr-custo-${idx}">${fmtBRL(calc.custoBRL)}</td>
-              <td class="right mono" id="lr-lucro-${idx}" style="color:${calc.lucroBRL>=0?'var(--teal)':'var(--danger)'};">${fmtBRL(calc.lucroBRL)}</td>
-              <td class="center"><button class="icon-btn danger lr-item-remove" data-idx="${idx}">${ICONS.trash}</button></td>
+              <td><input type="number" min="0" step="0.01" class="lr-item-pv right mono" data-uid="${iuid}" value="${Number(it.precoVendaUsd).toFixed(2)}" style="width:95px;"></td>
+              <td><input type="number" min="0" step="0.01" class="lr-item-cr right mono" data-uid="${iuid}" value="${Number(it.custoRealUsd).toFixed(2)}" style="width:95px;"></td>
+              <td class="right mono" id="lr-venda-${iuid}">${fmtBRL(calc.vendaBRL)}</td>
+              <td class="right mono" id="lr-custo-${iuid}">${fmtBRL(calc.custoBRL)}</td>
+              <td class="right mono" id="lr-lucro-${iuid}" style="color:${calc.lucroBRL>=0?'var(--teal)':'var(--danger)'};">${fmtBRL(calc.lucroBRL)}</td>
+              <td class="center"><button class="icon-btn danger lr-item-remove" data-uid="${iuid}">${ICONS.trash}</button></td>
             </tr>`;
+          }).join('')}
           }).join('')}
         </tbody>
       </table>
@@ -1542,11 +1574,12 @@ function buildLucroRealTotaisHTML(totais){
 function refreshLucroRealTotais(){
   const d = state.lucroRealDraft;
   if(!d) return;
-  d.itens.forEach((it,idx)=>{
+  d.itens.forEach((it)=>{
+    if(!it.uid) it.uid = uid();
     const calc = calcLucroRealLine(it, d);
-    const ve = document.getElementById('lr-venda-'+idx); if(ve) ve.textContent = fmtBRL(calc.vendaBRL);
-    const cu = document.getElementById('lr-custo-'+idx); if(cu) cu.textContent = fmtBRL(calc.custoBRL);
-    const lu = document.getElementById('lr-lucro-'+idx);
+    const ve = document.getElementById('lr-venda-'+it.uid); if(ve) ve.textContent = fmtBRL(calc.vendaBRL);
+    const cu = document.getElementById('lr-custo-'+it.uid); if(cu) cu.textContent = fmtBRL(calc.custoBRL);
+    const lu = document.getElementById('lr-lucro-'+it.uid);
     if(lu){ lu.textContent = fmtBRL(calc.lucroBRL); lu.style.color = calc.lucroBRL>=0 ? 'var(--teal)' : 'var(--danger)'; }
   });
   const totais = calcLucroRealTotals(d);
@@ -2279,7 +2312,8 @@ function selectProdutoForItem(codigo){
   }else if(ctx.type === 'presupuesto'){
     state.presupuestoPyDraft.itens[ctx.idx] = {...state.presupuestoPyDraft.itens[ctx.idx], codigo:p.codigo, nome:p.nome, sIva:p.precoMinUsd};
   }else if(ctx.type === 'lucroreal'){
-    state.lucroRealDraft.itens[ctx.idx] = {...state.lucroRealDraft.itens[ctx.idx], codigo:p.codigo, nome:p.nome, manual:false, precoVendaUsd:p.precoMinUsd, custoRealUsd:p.precoMinUsd};
+    const it = state.lucroRealDraft.itens.find(x=>x.uid===ctx.idx);
+    if(it) Object.assign(it, {codigo:p.codigo, nome:p.nome, manual:false, precoVendaUsd:p.precoMinUsd, custoRealUsd:p.precoMinUsd});
   }
   closeProdutoDropdown();
   render();
@@ -2716,58 +2750,57 @@ function attachHandlers(){
   if(lrNfPercent) lrNfPercent.addEventListener('input', (e)=>{ state.lucroRealDraft.nfPercent = e.target.value; refreshLucroRealTotais(); });
   const btnAddItemLr = document.getElementById('btn-add-item-lr');
   if(btnAddItemLr) btnAddItemLr.addEventListener('click', ()=>{
-    state.lucroRealDraft.itens.push({codigo:'', nome:'', manual:false, quantidade:1, precoVendaUsd:0, custoRealUsd:0});
+    state.lucroRealDraft.itens.push({uid:uid(), codigo:'', nome:'', manual:false, quantidade:1, precoVendaUsd:0, custoRealUsd:0});
     render();
   });
   document.querySelectorAll('.lr-produto-input').forEach(el=>{
-    const idx = Number(el.getAttribute('data-idx'));
-    el.addEventListener('focus', (e)=> openProdutoDropdown('lucroreal', idx, e.target));
+    const iuid = el.getAttribute('data-uid');
+    el.addEventListener('focus', (e)=> openProdutoDropdown('lucroreal', iuid, e.target));
     el.addEventListener('input', (e)=>{
-      if(!(activeDropdownContext && activeDropdownContext.type==='lucroreal' && activeDropdownContext.idx===idx)) openProdutoDropdown('lucroreal', idx, e.target);
+      if(!(activeDropdownContext && activeDropdownContext.type==='lucroreal' && activeDropdownContext.idx===iuid)) openProdutoDropdown('lucroreal', iuid, e.target);
       else { positionProdutoDropdown(e.target); filterProdutoDropdown(e.target.value); }
     });
   });
   document.querySelectorAll('.lr-produto-manual').forEach(el=>{
     el.addEventListener('input', (e)=>{
-      const idx = Number(e.target.getAttribute('data-idx'));
-      state.lucroRealDraft.itens[idx].nome = e.target.value;
-      state.lucroRealDraft.itens[idx].codigo = '';
+      const iuid = e.target.getAttribute('data-uid');
+      const it = state.lucroRealDraft.itens.find(x=>x.uid===iuid);
+      if(it){ it.nome = e.target.value; it.codigo = ''; }
     });
   });
   document.querySelectorAll('.lr-toggle-manual').forEach(el=>{
     el.addEventListener('click', (e)=>{
-      const idx = Number(e.currentTarget.getAttribute('data-idx'));
-      const it = state.lucroRealDraft.itens[idx];
-      it.manual = !it.manual;
-      if(it.manual){ it.codigo=''; }
+      const iuid = e.currentTarget.getAttribute('data-uid');
+      const it = state.lucroRealDraft.itens.find(x=>x.uid===iuid);
+      if(it){ it.manual = !it.manual; if(it.manual) it.codigo=''; }
       render();
     });
   });
   document.querySelectorAll('.lr-item-qtd').forEach(el=>{
     el.addEventListener('input', (e)=>{
-      const idx = Number(e.target.getAttribute('data-idx'));
-      state.lucroRealDraft.itens[idx].quantidade = Number(e.target.value)||0;
-      refreshLucroRealTotais();
+      const iuid = e.target.getAttribute('data-uid');
+      const it = state.lucroRealDraft.itens.find(x=>x.uid===iuid);
+      if(it){ it.quantidade = Number(e.target.value)||0; refreshLucroRealTotais(); }
     });
   });
   document.querySelectorAll('.lr-item-pv').forEach(el=>{
     el.addEventListener('input', (e)=>{
-      const idx = Number(e.target.getAttribute('data-idx'));
-      state.lucroRealDraft.itens[idx].precoVendaUsd = Number(e.target.value)||0;
-      refreshLucroRealTotais();
+      const iuid = e.target.getAttribute('data-uid');
+      const it = state.lucroRealDraft.itens.find(x=>x.uid===iuid);
+      if(it){ it.precoVendaUsd = Number(e.target.value)||0; refreshLucroRealTotais(); }
     });
   });
   document.querySelectorAll('.lr-item-cr').forEach(el=>{
     el.addEventListener('input', (e)=>{
-      const idx = Number(e.target.getAttribute('data-idx'));
-      state.lucroRealDraft.itens[idx].custoRealUsd = Number(e.target.value)||0;
-      refreshLucroRealTotais();
+      const iuid = e.target.getAttribute('data-uid');
+      const it = state.lucroRealDraft.itens.find(x=>x.uid===iuid);
+      if(it){ it.custoRealUsd = Number(e.target.value)||0; refreshLucroRealTotais(); }
     });
   });
   document.querySelectorAll('.lr-item-remove').forEach(el=>{
     el.addEventListener('click', (e)=>{
-      const idx = Number(e.currentTarget.getAttribute('data-idx'));
-      state.lucroRealDraft.itens.splice(idx,1);
+      const iuid = e.currentTarget.getAttribute('data-uid');
+      state.lucroRealDraft.itens = state.lucroRealDraft.itens.filter(x=>x.uid!==iuid);
       render();
     });
   });

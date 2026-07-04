@@ -472,8 +472,7 @@ function novoLucroRealDraft(){
     id:null, cliente:'', data: new Date().toISOString().slice(0,10),
     freteVendaPercent: '', freteCustoPercent: '0',
     taxaDolarVenda: '', taxaDolarCusto: '',
-    nfPercent: '12',
-    itens: [] // {codigo,nome,manual,quantidade,precoVendaUsd,custoRealUsd}
+    itens: [] // {uid,codigo,nome,manual,quantidade,precoVendaUsd,custoRealUsd,comNF,nfPercent}
   };
 }
 
@@ -482,9 +481,8 @@ function novoVendaDraft(){
 }
 
 function recalcularValorVenda(){
-  const d = state.vendaDraft;
-  if(!d || !d.produtos.length) return;
-  d.valor = d.produtos.reduce((s,p)=> s + (Number(p.preco)||0) * (Number(p.quantidade)||0), 0);
+  // Produtos vinculados são informativos — o valor da nota não é alterado automaticamente.
+  // O usuário controla o valor no campo "Valor (USD)" manualmente.
 }
 
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
@@ -534,12 +532,14 @@ const CATEGORY_RULES = [
   { test: /\bAP[\s\-]?\d{2,4}[A-Z]?\b|ACC?ESS ?POINT|PONTO DE ACESSO|AIRENGINE|\bEAP\d{2,4}[A-Z]*\b|\bOMADA\b/i, categoria: 'Redes — Access Point' },
   { test: /\bSWITCH\b|\bS\d{3,4}[A-Z\-]|HUB-SWI|\bSG\d{4}\b|\bT\d{3,4}G\b/i, categoria: 'Redes — Switch' },
   { test: /\bTL-WN\d{3}|ARCHER T\d[A-Z]*U|MERCUSYS (USB|MA\d)|\bNIC\b|PCI EXPRESS|PCI WIRELES|\bHUB\b.*USB|USB.*HUB|\bUE\d{3}[A-Z]?\b|\bUC\d{3}\b|\bUB5A\b|REDE TG-\d|10 GIGABIT PCIE/i, categoria: 'Redes — Adaptadores e Acessórios' },
+  { test: /PLACA DE REDE|NETWORK CARD|\bLAN CARD\b|HUAWEI PN[0-9]|ZTE.*(PLACA|CARD|BOARD)|LINE PROCESSING|SERVICE.*UNIT|MPFE|EFGE|VSUF|LPUI|EPFC|NI-[0-9]|\bBOARD\b.*ROUTER|HuaWei.*Board|\bINTERFACE BOARD\b|\bINTEL CARD\b|\bEXPANSION BOARD\b|\bCE\d{3,}\b.*CARD|\bS[A-Z]{2}\d{3}\b.*BOARD|\bES[0-9][A-Z]\d{2}[A-Z0-9]+\b/i, categoria: 'Redes — Placas' },
   { test: /ROTEADOR|\bROUTER\b|\bGATEWAY\b|\bAR\d{2,4}\b|\bDIR-?\d{3}\b|\bARCHER\b|\bDECO\b|\bHALO\b|\bMESH\b|\bNETENGINE\b|\bCR8D|\bNE8000\b|\bEC\d{3}\b/i, categoria: 'Redes — Roteador' },
   { test: /REPETIDOR|EXTENSOR|RANGE EXTENDER|\bEXTENDER\b|POWERLINE|\bWPA\d{3,4}\b|\bRE\d{3}[A-Z]?\b|TL-WA\d{3}RE/i, categoria: 'Redes — Repetidor/Extensor' },
   { test: /\bMODEM\b/i, categoria: 'Redes — Modem' },
   { test: /ANTENA|ANTENNA/i, categoria: 'Redes — Antena' },
   { test: /PATCH ?CORD|CABO DE REDE|CABO UTP|CONECTOR RJ|\bRJ-?45\b/i, categoria: 'Redes — Cabos e Conectores' },
   { test: /POWER SUPPLY|\bFONTE\b|\bCABINET\b|\bCOOLER\b|GAVETA HD|AIR CONDITIONER|\bCASE\b|\bBATTERY P\/|\bNOBREAK\b|\bUPS\b|\bRACK\b|SERVER CAB|POE INJECTOR/i, categoria: 'Redes — Infraestrutura e Energia' },
+  { test: /\bPILHA\b|\bPLACA\b.*REDE|\bNIC\b.*HUAWEI|\bNIC\b.*ZTE|\bINTERFACE BOARD\b|\bINTEL CARD\b|\bEXPANSION BOARD\b|P[A-Z]{2}\d{3,}[A-Z]?(-[A-Z0-9]+)?.*\b(HUAWEI|ZTE|H3C)\b|\bCE\d{3,}\b.*CARD|\bS[A-Z]{2}\d{3}\b.*BOARD/i, categoria: 'Redes — Placas' },
   { test: /BEURER|TENS[IÍ]OMETRO|TERM[OÔ]METRO|OX[IÍ]METRO|BALAN[CÇ]A DIGITAL|NEBULIZADOR|MASSAGEADOR/i, categoria: 'Saúde e Bem-estar' },
   { test: /ALISADOR|SMOOTH SKIN|LASER HAIR|HAIR REMOVER|EYE REFRESH|EPILADOR/i, categoria: 'Beleza e Cuidados Pessoais' },
   { test: /SMARTWATCH|SMART ?WATCH|REL[OÓ]GIO INTELIGENTE|\bWATCH\b/i, categoria: 'Wearables — Smartwatch' },
@@ -626,7 +626,23 @@ function resetDraftIfNotEditing(){
 }
 
 /* ===================== RENDER ROOT ===================== */
+function snapshotVendaDraftFields(){
+  // Captura todos os campos do formulário de venda no estado antes do re-render
+  const d = state.vendaDraft;
+  if(!d) return;
+  const fields = [
+    ['v-nota','notaFiscal'], ['v-codigo','codigoCliente'],
+    ['v-nome','nomeCliente'], ['v-obs','obs']
+  ];
+  fields.forEach(([id, key])=>{ const el=document.getElementById(id); if(el) d[key]=el.value; });
+  const dataEl = document.getElementById('v-data'); if(dataEl) d.diaCompra = dataEl.value;
+  const valorEl = document.getElementById('v-valor'); if(valorEl && !d.produtos.length) d.valor = valorEl.value;
+  const niEl = document.getElementById('v-novo-integrador'); if(niEl) d.novoIntegrador = niEl.checked;
+  const adEl = document.getElementById('v-atribuida-diego'); if(adEl) d.atribuidaDiego = adEl.checked;
+}
+
 function render(){
+  if(state.vendaDraft) snapshotVendaDraftFields();
   renderNav();
   const main = document.getElementById('main');
   if(state.view==='dashboard') main.innerHTML = viewDashboard();
@@ -1382,6 +1398,7 @@ function calcLucroRealLine(item, draft){
   const fc = (Number(draft.freteCustoPercent)||0)/100;
   const tv = Number(draft.taxaDolarVenda)||0;
   const tc = Number(draft.taxaDolarCusto)||0;
+  const nf = item.comNF ? (Number(item.nfPercent)||0)/100 : 0;
 
   const vendaUsdComFrete = pv * (1+fv);
   const custoUsdComFrete = cr * (1+fc);
@@ -1389,13 +1406,15 @@ function calcLucroRealLine(item, draft){
   const subtotalCustoUsd = custoUsdComFrete * qtd;
   const vendaBRL = subtotalVendaUsd * tv;
   const custoBRL = subtotalCustoUsd * tc;
-  const lucroBRL = vendaBRL - custoBRL;
+  const valorNF = vendaBRL * nf;
+  const vendaBRLComNF = vendaBRL + valorNF;
+  const lucroBRL = vendaBRLComNF - custoBRL;
 
-  return { subtotalVendaUsd, subtotalCustoUsd, vendaBRL, custoBRL, lucroBRL };
+  return { subtotalVendaUsd, subtotalCustoUsd, vendaBRL, vendaBRLComNF, valorNF, custoBRL, lucroBRL };
 }
 
 function calcLucroRealTotals(draft){
-  let totalVendaBRL=0, totalCustoBRL=0;
+  let totalVendaBRL=0, totalVendaBRLComNF=0, totalCustoBRL=0, totalNF=0;
   let lucroProdutoUsd=0, lucroFreteUsd=0, totalVendaUsdComFrete=0;
   const fv = (Number(draft.freteVendaPercent)||0)/100;
   const fc = (Number(draft.freteCustoPercent)||0)/100;
@@ -1408,25 +1427,22 @@ function calcLucroRealTotals(draft){
     const cr = Number(it.custoRealUsd)||0;
     const calc = calcLucroRealLine(it, draft);
     totalVendaBRL += calc.vendaBRL;
+    totalVendaBRLComNF += calc.vendaBRLComNF;
     totalCustoBRL += calc.custoBRL;
+    totalNF += calc.valorNF;
     totalVendaUsdComFrete += calc.subtotalVendaUsd;
     lucroProdutoUsd += (pv - cr) * qtd;
     lucroFreteUsd += (pv*qtd*fv) - (cr*qtd*fc);
   });
 
-  const lucroRealTotal = totalVendaBRL - totalCustoBRL;
+  const lucroRealTotal = totalVendaBRLComNF - totalCustoBRL;
   const margemPercent = totalCustoBRL > 0 ? (lucroRealTotal/totalCustoBRL)*100 : null;
-
-  // Decomposição aproximada por origem (valorizada à taxa de custo para o componente em USD,
-  // e o spread cambial aplicado sobre o total vendido em USD com frete).
   const lucroProdutoBRL = lucroProdutoUsd * tc;
   const lucroFreteBRL = lucroFreteUsd * tc;
   const lucroCambioBRL = totalVendaUsdComFrete * (tv - tc);
+  const itensComNF = draft.itens.filter(it=>it.comNF).length;
 
-  const nfPercent = Number(draft.nfPercent)||0;
-  const valorComNF = totalVendaBRL * (1 + nfPercent/100);
-
-  return { totalVendaBRL, totalCustoBRL, lucroRealTotal, margemPercent, lucroProdutoBRL, lucroFreteBRL, lucroCambioBRL, nfPercent, valorComNF };
+  return { totalVendaBRL, totalVendaBRLComNF, totalCustoBRL, totalNF, lucroRealTotal, margemPercent, lucroProdutoBRL, lucroFreteBRL, lucroCambioBRL, itensComNF };
 }
 
 function viewLucroReal(){
@@ -1458,10 +1474,6 @@ function viewLucroReal(){
         <div><label>Taxa do dólar repassada (R$)</label><input type="number" step="0.01" id="lr-taxa-venda" value="${draft.taxaDolarVenda}" placeholder="Ex: 5.20"></div>
         <div><label>Taxa do dólar que você paga (R$)</label><input type="number" step="0.01" id="lr-taxa-custo" value="${draft.taxaDolarCusto}" placeholder="Ex: 5.16"></div>
       </div>
-      <div style="margin-bottom:20px;max-width:200px;">
-        <label>Nota Fiscal (%) — informativo</label>
-        <input type="number" step="0.01" id="lr-nf-percent" value="${draft.nfPercent}" placeholder="Ex: 12">
-      </div>
 
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
         <div class="section-title" style="margin:0;">Itens</div>
@@ -1475,6 +1487,7 @@ function viewLucroReal(){
           <th style="min-width:200px;">Produto</th>
           <th class="right">Preço venda (U$)</th>
           <th class="right">Custo real (U$)</th>
+          <th class="center">NF? (%)</th>
           <th class="right">Venda (R$)</th>
           <th class="right">Custo (R$)</th>
           <th class="right">Lucro (R$)</th>
@@ -1490,16 +1503,20 @@ function viewLucroReal(){
               <td><input type="number" min="0" step="1" class="lr-item-qtd right mono" data-uid="${iuid}" value="${it.quantidade}" style="width:60px;"></td>
               <td>
                 ${it.manual ? `
-                  <input data-uid="${iuid}" class="lr-produto-manual mono" value="${escapeHtml(it.nome)}" placeholder="Nome do produto (manual)">
+                  <input data-uid="${iuid}" class="lr-produto-manual mono" value="${escapeHtml(it.nome)}" placeholder="Nome do produto (manual)" style="width:100%;">
                   <div style="font-size:10px;color:var(--text-muted);margin-top:2px;cursor:pointer;" class="lr-toggle-manual" data-uid="${iuid}">← buscar no estoque</div>
                 ` : `
-                  <input data-uid="${iuid}" class="lr-produto-input mono" autocomplete="off" value="${it.codigo ? escapeHtml(it.codigo+' — '+it.nome) : ''}" placeholder="Buscar produto...">
+                  <input data-uid="${iuid}" class="lr-produto-input mono" autocomplete="off" value="${it.codigo ? escapeHtml(it.codigo+' — '+it.nome) : ''}" placeholder="Buscar produto..." style="width:100%;">
                   <div style="font-size:10px;color:var(--text-muted);margin-top:2px;cursor:pointer;" class="lr-toggle-manual" data-uid="${iuid}">não está no estoque? digitar manualmente</div>
                 `}
               </td>
-              <td><input type="number" min="0" step="0.01" class="lr-item-pv right mono" data-uid="${iuid}" value="${Number(it.precoVendaUsd).toFixed(2)}" style="width:95px;"></td>
-              <td><input type="number" min="0" step="0.01" class="lr-item-cr right mono" data-uid="${iuid}" value="${Number(it.custoRealUsd).toFixed(2)}" style="width:95px;"></td>
-              <td class="right mono" id="lr-venda-${iuid}">${fmtBRL(calc.vendaBRL)}</td>
+              <td><input type="number" min="0" step="0.01" class="lr-item-pv right mono" data-uid="${iuid}" value="${Number(it.precoVendaUsd).toFixed(2)}" style="width:88px;"></td>
+              <td><input type="number" min="0" step="0.01" class="lr-item-cr right mono" data-uid="${iuid}" value="${Number(it.custoRealUsd).toFixed(2)}" style="width:88px;"></td>
+              <td class="center" style="white-space:nowrap;">
+                <input type="checkbox" class="lr-item-nf-check" data-uid="${iuid}" ${it.comNF?'checked':''} title="Incluir NF neste item">
+                ${it.comNF ? `<input type="number" min="0" step="0.1" class="lr-item-nf-pct mono" data-uid="${iuid}" value="${it.nfPercent||12}" style="width:50px;margin-left:4px;" title="% NF">` : ''}
+              </td>
+              <td class="right mono" id="lr-venda-${iuid}">${fmtBRL(calc.vendaBRLComNF)}</td>
               <td class="right mono" id="lr-custo-${iuid}">${fmtBRL(calc.custoBRL)}</td>
               <td class="right mono" id="lr-lucro-${iuid}" style="color:${calc.lucroBRL>=0?'var(--teal)':'var(--danger)'};">${fmtBRL(calc.lucroBRL)}</td>
               <td class="center"><button class="icon-btn danger lr-item-remove" data-uid="${iuid}">${ICONS.trash}</button></td>
@@ -1562,12 +1579,11 @@ function viewLucroReal(){
 
 function buildLucroRealTotaisHTML(totais){
   return `
-    <div class="totals-row"><span>Total vendido (com frete e câmbio)</span><span class="v">${fmtBRL(totais.totalVendaBRL)}</span></div>
+    <div class="totals-row"><span>Total venda (sem NF)</span><span class="v">${fmtBRL(totais.totalVendaBRL)}</span></div>
+    ${totais.totalNF > 0 ? `<div class="totals-row"><span>NF (${totais.itensComNF} item/itens)</span><span class="v">${fmtBRL(totais.totalNF)}</span></div>` : ''}
     <div class="totals-row"><span>Custo real total</span><span class="v">${fmtBRL(totais.totalCustoBRL)}</span></div>
     <div class="totals-row final" style="color:${totais.lucroRealTotal>=0?'var(--teal)':'var(--danger)'};"><span>Lucro Real Total</span><span class="v">${fmtBRL(totais.lucroRealTotal)}</span></div>
     ${totais.margemPercent!==null ? `<div class="totals-row"><span>Margem sobre o custo</span><span class="v">${totais.margemPercent.toFixed(1)}%</span></div>` : ''}
-    <div class="divider"></div>
-    <div class="totals-row"><span>Valor com NF (${totais.nfPercent}%) — informativo</span><span class="v">${fmtBRL(totais.valorComNF)}</span></div>
   `;
 }
 
@@ -1577,7 +1593,7 @@ function refreshLucroRealTotais(){
   d.itens.forEach((it)=>{
     if(!it.uid) it.uid = uid();
     const calc = calcLucroRealLine(it, d);
-    const ve = document.getElementById('lr-venda-'+it.uid); if(ve) ve.textContent = fmtBRL(calc.vendaBRL);
+    const ve = document.getElementById('lr-venda-'+it.uid); if(ve) ve.textContent = fmtBRL(calc.vendaBRLComNF);
     const cu = document.getElementById('lr-custo-'+it.uid); if(cu) cu.textContent = fmtBRL(calc.custoBRL);
     const lu = document.getElementById('lr-lucro-'+it.uid);
     if(lu){ lu.textContent = fmtBRL(calc.lucroBRL); lu.style.color = calc.lucroBRL>=0 ? 'var(--teal)' : 'var(--danger)'; }
@@ -1676,7 +1692,7 @@ const NETWORKING_CATS = [
   'Redes — Access Point','Redes — Switch','Redes — Roteador','Redes — ONT/ONU',
   'Redes — OLT','Redes — Fibra Óptica e Acessórios','Redes — Repetidor/Extensor',
   'Redes — Adaptadores e Acessórios','Redes — Modem','Redes — Antena','Redes — Cabos e Conectores',
-  'Redes — Infraestrutura e Energia'
+  'Redes — Infraestrutura e Energia','Redes — Placas'
 ];
 const CFTV_CAT = 'CFTV — Câmeras e Gravadores';
 
@@ -1827,7 +1843,7 @@ function viewVendas(){
         <div><label>Dia da compra</label><input type="date" id="v-data" value="${draft.diaCompra}"></div>
         <div>
           <label>Valor (USD)${draft.produtos.length ? ' — recalculado automaticamente pelos produtos' : ''}</label>
-          <input type="number" step="0.01" min="0" id="v-valor" value="${Number(draft.valor).toFixed(2)}" placeholder="Ex: 360.36" ${draft.produtos.length ? 'readonly style="opacity:.7;"' : ''}>
+          <input type="number" step="0.01" min="0" id="v-valor" value="${Number(draft.valor||0).toFixed(2)}" placeholder="Ex: 360.36">
         </div>
         <div><label>Obs.</label><input id="v-obs" value="${escapeHtml(draft.obs)}" placeholder="Ex: NOVO INTEGRADOR, ou nome do cliente real"></div>
       </div>
@@ -2307,8 +2323,12 @@ function selectProdutoForItem(codigo){
   if(ctx.type === 'orcamento'){
     state.draft.itens[ctx.idx] = {...state.draft.itens[ctx.idx], codigo:p.codigo, nome:p.nome, categoria:p.categoria, precoMinUsd:p.precoMinUsd, precoCatalogo:p.precoMinUsd};
   }else if(ctx.type === 'venda'){
+    const categoria = p.categoria || detectCategoria(p.codigo, p.nome);
     state.vendaDraft.produtos[ctx.idx] = {...state.vendaDraft.produtos[ctx.idx], codigo:p.codigo, nome:p.nome, preco:p.precoMinUsd};
-    recalcularValorVenda();
+    // Auto-add category chip if not already selected
+    if(categoria && !state.vendaDraft.categorias.includes(categoria)){
+      state.vendaDraft.categorias.push(categoria);
+    }
   }else if(ctx.type === 'presupuesto'){
     state.presupuestoPyDraft.itens[ctx.idx] = {...state.presupuestoPyDraft.itens[ctx.idx], codigo:p.codigo, nome:p.nome, sIva:p.precoMinUsd};
   }else if(ctx.type === 'lucroreal'){
@@ -2332,8 +2352,23 @@ window.addEventListener('click', (e)=>{
   if(dd.contains(e.target) || e.target.classList.contains('item-produto-input') || e.target.classList.contains('venda-produto-input') || e.target.classList.contains('py-produto-input') || e.target.classList.contains('lr-produto-input')) return;
   closeProdutoDropdown();
 });
-window.addEventListener('scroll', ()=>{ closeProdutoDropdown(); }, true);
+window.addEventListener('scroll', (e)=>{
+  // Não fecha se o scroll ocorreu dentro do próprio dropdown
+  const dd = document.getElementById('produto-dropdown');
+  if(dd && !dd.classList.contains('hidden') && dd.contains(e.target)) return;
+  closeProdutoDropdown();
+}, true);
 window.addEventListener('resize', ()=>{ closeProdutoDropdown(); });
+
+// Bloqueia o scroll da página quando o mouse está sobre o dropdown,
+// permitindo que o dropdown role internamente
+document.addEventListener('wheel', (e)=>{
+  const dd = document.getElementById('produto-dropdown');
+  if(dd && !dd.classList.contains('hidden') && dd.matches(':hover')){
+    e.preventDefault();
+    dd.scrollTop += e.deltaY;
+  }
+}, {passive: false});
 
 /* ===================== HANDLERS ===================== */
 function attachHandlers(){
@@ -2543,6 +2578,13 @@ function attachHandlers(){
   });
   const btnAddProdutoVenda = document.getElementById('btn-add-produto-venda');
   if(btnAddProdutoVenda) btnAddProdutoVenda.addEventListener('click', ()=>{
+    // Save all current field values before render
+    const nota = document.getElementById('v-nota'); if(nota) state.vendaDraft.notaFiscal = nota.value;
+    const cod = document.getElementById('v-codigo'); if(cod) state.vendaDraft.codigoCliente = cod.value;
+    const nome = document.getElementById('v-nome'); if(nome) state.vendaDraft.nomeCliente = nome.value;
+    const data = document.getElementById('v-data'); if(data) state.vendaDraft.diaCompra = data.value;
+    const valor = document.getElementById('v-valor'); if(valor) state.vendaDraft.valor = valor.value;
+    const obs = document.getElementById('v-obs'); if(obs) state.vendaDraft.obs = obs.value;
     state.vendaDraft.produtos.push({codigo:'', nome:'', quantidade:1, preco:0});
     render();
   });
@@ -2558,23 +2600,24 @@ function attachHandlers(){
     el.addEventListener('input', (e)=>{
       const pidx = Number(e.target.getAttribute('data-pidx'));
       state.vendaDraft.produtos[pidx].quantidade = Number(e.target.value)||0;
-      recalcularValorVenda();
-      render();
     });
   });
   document.querySelectorAll('.venda-produto-preco').forEach(el=>{
     el.addEventListener('input', (e)=>{
       const pidx = Number(e.target.getAttribute('data-pidx'));
       state.vendaDraft.produtos[pidx].preco = Number(e.target.value)||0;
-      recalcularValorVenda();
-      render();
     });
   });
   document.querySelectorAll('.venda-produto-remove').forEach(el=>{
     el.addEventListener('click', (e)=>{
       const pidx = Number(e.currentTarget.getAttribute('data-pidx'));
+      const nota = document.getElementById('v-nota'); if(nota) state.vendaDraft.notaFiscal = nota.value;
+      const cod = document.getElementById('v-codigo'); if(cod) state.vendaDraft.codigoCliente = cod.value;
+      const nome = document.getElementById('v-nome'); if(nome) state.vendaDraft.nomeCliente = nome.value;
+      const data = document.getElementById('v-data'); if(data) state.vendaDraft.diaCompra = data.value;
+      const valor = document.getElementById('v-valor'); if(valor) state.vendaDraft.valor = valor.value;
+      const obs = document.getElementById('v-obs'); if(obs) state.vendaDraft.obs = obs.value;
       state.vendaDraft.produtos.splice(pidx,1);
-      recalcularValorVenda();
       render();
     });
   });
@@ -2746,8 +2789,6 @@ function attachHandlers(){
   if(lrTaxaVenda) lrTaxaVenda.addEventListener('input', (e)=>{ state.lucroRealDraft.taxaDolarVenda = e.target.value; refreshLucroRealTotais(); });
   const lrTaxaCusto = document.getElementById('lr-taxa-custo');
   if(lrTaxaCusto) lrTaxaCusto.addEventListener('input', (e)=>{ state.lucroRealDraft.taxaDolarCusto = e.target.value; refreshLucroRealTotais(); });
-  const lrNfPercent = document.getElementById('lr-nf-percent');
-  if(lrNfPercent) lrNfPercent.addEventListener('input', (e)=>{ state.lucroRealDraft.nfPercent = e.target.value; refreshLucroRealTotais(); });
   const btnAddItemLr = document.getElementById('btn-add-item-lr');
   if(btnAddItemLr) btnAddItemLr.addEventListener('click', ()=>{
     state.lucroRealDraft.itens.push({uid:uid(), codigo:'', nome:'', manual:false, quantidade:1, precoVendaUsd:0, custoRealUsd:0});
@@ -2762,18 +2803,52 @@ function attachHandlers(){
     });
   });
   document.querySelectorAll('.lr-produto-manual').forEach(el=>{
-    el.addEventListener('input', (e)=>{
+    const handler = (e)=>{
       const iuid = e.target.getAttribute('data-uid');
       const it = state.lucroRealDraft.itens.find(x=>x.uid===iuid);
-      if(it){ it.nome = e.target.value; it.codigo = ''; }
-    });
+      if(it){ it.nome = e.target.value; it.codigo = ''; it.manual = true; }
+    };
+    el.addEventListener('input', handler);
+    el.addEventListener('change', handler);
+    el.addEventListener('blur', handler);
   });
   document.querySelectorAll('.lr-toggle-manual').forEach(el=>{
     el.addEventListener('click', (e)=>{
+      // save all header fields before re-render
+      const lrc = document.getElementById('lr-cliente'); if(lrc) state.lucroRealDraft.cliente = lrc.value;
+      const lrd = document.getElementById('lr-data'); if(lrd) state.lucroRealDraft.data = lrd.value;
+      const lrfv = document.getElementById('lr-frete-venda'); if(lrfv) state.lucroRealDraft.freteVendaPercent = lrfv.value;
+      const lrfc = document.getElementById('lr-frete-custo'); if(lrfc) state.lucroRealDraft.freteCustoPercent = lrfc.value;
+      const lrtv = document.getElementById('lr-taxa-venda'); if(lrtv) state.lucroRealDraft.taxaDolarVenda = lrtv.value;
+      const lrtc = document.getElementById('lr-taxa-custo'); if(lrtc) state.lucroRealDraft.taxaDolarCusto = lrtc.value;
+      // save all manual field values before re-render
+      document.querySelectorAll('.lr-produto-manual').forEach(inp=>{
+        const iuid2 = inp.getAttribute('data-uid');
+        const it2 = state.lucroRealDraft.itens.find(x=>x.uid===iuid2);
+        if(it2) it2.nome = inp.value;
+      });
       const iuid = e.currentTarget.getAttribute('data-uid');
       const it = state.lucroRealDraft.itens.find(x=>x.uid===iuid);
-      if(it){ it.manual = !it.manual; if(it.manual) it.codigo=''; }
+      if(it){ it.manual = !it.manual; if(it.manual){ it.codigo=''; it.nome=it.nome||''; } }
       render();
+    });
+  });
+  document.querySelectorAll('.lr-item-nf-check').forEach(el=>{
+    el.addEventListener('change', (e)=>{
+      const iuid = e.target.getAttribute('data-uid');
+      const it = state.lucroRealDraft.itens.find(x=>x.uid===iuid);
+      if(it){
+        it.comNF = e.target.checked;
+        if(it.comNF && !it.nfPercent) it.nfPercent = 12;
+        render();
+      }
+    });
+  });
+  document.querySelectorAll('.lr-item-nf-pct').forEach(el=>{
+    el.addEventListener('input', (e)=>{
+      const iuid = e.target.getAttribute('data-uid');
+      const it = state.lucroRealDraft.itens.find(x=>x.uid===iuid);
+      if(it){ it.nfPercent = Number(e.target.value)||0; refreshLucroRealTotais(); }
     });
   });
   document.querySelectorAll('.lr-item-qtd').forEach(el=>{
@@ -2799,6 +2874,12 @@ function attachHandlers(){
   });
   document.querySelectorAll('.lr-item-remove').forEach(el=>{
     el.addEventListener('click', (e)=>{
+      // save all manual names before re-render
+      document.querySelectorAll('.lr-produto-manual').forEach(inp=>{
+        const iuid2 = inp.getAttribute('data-uid');
+        const it2 = state.lucroRealDraft.itens.find(x=>x.uid===iuid2);
+        if(it2) it2.nome = inp.value;
+      });
       const iuid = e.currentTarget.getAttribute('data-uid');
       state.lucroRealDraft.itens = state.lucroRealDraft.itens.filter(x=>x.uid!==iuid);
       render();

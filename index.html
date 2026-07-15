@@ -811,14 +811,31 @@ function viewProdutos(){
 /* Excel import */
 function parseExcelHeaders(row){
   const map = {};
-  Object.keys(row).forEach(k=>{
+  const keys = Object.keys(row);
+  keys.forEach(k=>{
     const nk = normalize(k);
-    if(!map.codigo && (nk.includes('codigo') || nk.includes('cod.') || nk === 'cod' || nk.includes('sku'))) map.codigo = k;
-    else if(!map.nome && (nk.includes('nome') || nk.includes('descricao') || nk.includes('descripcion') || nk.includes('producto') || nk.includes('produto') || nk.includes('item'))) map.nome = k;
+    if(!map.codigo && (nk.includes('codigo') || nk.includes('cod.') || nk === 'cod' || nk.includes('sku') || nk.includes('ref') || nk.includes('part'))) map.codigo = k;
+    else if(!map.nome && (nk.includes('nome') || nk.includes('descri') || nk.includes('producto') || nk.includes('produto') || nk.includes('item') || nk.includes('desc') || nk.includes('product'))) map.nome = k;
     else if(!map.categoria && nk.includes('categoria')) map.categoria = k;
-    else if(!map.estoque && (nk.includes('estoque') || nk.includes('stock') || nk.includes('quantidade') || nk.includes('cantidad') || nk.includes('disponivel') || nk.includes('disponible') || nk.includes('saldo') || nk.includes('qtd') || nk.includes('qty'))) map.estoque = k;
-    else if(!map.precoMinUsd && (nk.includes('preco') || nk.includes('preço') || nk.includes('precio'))) map.precoMinUsd = k;
+    else if(!map.estoque && (nk.includes('estoque') || nk.includes('stock') || nk.includes('quantidade') || nk.includes('cantidad') || nk.includes('disponivel') || nk.includes('saldo') || nk.includes('qtd') || nk.includes('qty') || nk.includes('quant'))) map.estoque = k;
+    else if(!map.precoMinUsd && (nk.includes('preco') || nk.includes('preço') || nk.includes('precio') || nk.includes('valor') || nk.includes('price') || nk.includes('costo') || nk.includes('custo') || nk.includes('min'))) map.precoMinUsd = k;
   });
+
+  // Fallback por posição: se não reconheceu os cabeçalhos mas tem pelo menos 3 colunas,
+  // assume: 1ª = código, 2ª = nome, 3ª = estoque, 4ª = preço
+  if((!map.codigo || !map.nome || !map.precoMinUsd) && keys.length >= 3){
+    const [k0,k1,k2,k3] = keys;
+    if(!map.codigo) map.codigo = k0;
+    if(!map.nome) map.nome = k1;
+    if(keys.length >= 4){
+      if(!map.estoque) map.estoque = k2;
+      if(!map.precoMinUsd) map.precoMinUsd = k3;
+    }else{
+      if(!map.precoMinUsd) map.precoMinUsd = k2;
+    }
+    map._usouFallbackPosicao = true;
+    map._headers = keys.slice(0,4).join(', ');
+  }
   return map;
 }
 
@@ -832,8 +849,11 @@ function handleExcelImport(file){
       if(!rows.length){ toast('A planilha está vazia.', true); return; }
       const map = parseExcelHeaders(rows[0]);
       if(!map.codigo || !map.nome || !map.precoMinUsd){
-        toast('Não encontrei as colunas obrigatórias (Código, Nome, Preço mínimo). Verifique o cabeçalho da planilha.', true);
+        toast('Planilha com menos de 3 colunas — não consegui identificar código, nome e preço. Verifique o arquivo.', true);
         return;
+      }
+      if(map._usouFallbackPosicao){
+        toast(`Cabeçalhos não reconhecidos (${map._headers}). Importando pela posição das colunas: 1ª=Código, 2ª=Nome, 3ª=Estoque, 4ª=Preço.`);
       }
       commitImport(rows, map);
     }catch(err){

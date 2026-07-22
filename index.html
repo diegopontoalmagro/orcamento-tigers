@@ -2099,8 +2099,12 @@ function viewVendas(){
       <div class="section-title" style="margin-bottom:18px;">${draft.id ? 'Editar venda' : 'Nova venda'}</div>
       <div class="grid grid-2" style="margin-bottom:20px;gap:18px;">
         <div><label>Nota Fiscal</label><input id="v-nota" value="${escapeHtml(draft.notaFiscal)}" placeholder="Ex: 121633"></div>
-        <div><label>Código do cliente</label><input id="v-codigo" value="${escapeHtml(draft.codigoCliente)}" placeholder="Ex: 2983"></div>
-        <div><label>Nome do cliente (como sai na nota)</label><input id="v-nome" value="${escapeHtml(draft.nomeCliente)}" placeholder="Ex: Vive Telecom S.A."></div>
+        <div><label>Código do cliente</label><input id="v-codigo" value="${escapeHtml(draft.codigoCliente)}" placeholder="Ex: 2983" autocomplete="off"></div>
+        <div style="position:relative;">
+          <label>Nome do cliente (como sai na nota)</label>
+          <input id="v-nome" value="${escapeHtml(draft.nomeCliente)}" placeholder="Digite para buscar clientes anteriores ou preencher manual..." autocomplete="off">
+          <div id="cliente-dropdown" class="produto-dropdown hidden"></div>
+        </div>
         <div><label>Dia da compra</label><input type="date" id="v-data" value="${draft.diaCompra}"></div>
         <div>
           <label>Valor (USD)${draft.produtos.length ? ' — recalculado automaticamente pelos produtos' : ''}</label>
@@ -2606,7 +2610,72 @@ function closeProdutoDropdown(){
   if(dd) dd.classList.add('hidden');
 }
 
-// Fecha o dropdown ao clicar fora ou rolar a página — registrado uma única vez.
+/* ===== AUTOCOMPLETE DE CLIENTE (campo Nome na venda) ===== */
+function getClientesConhecidos(){
+  const mapa = {};
+  state.vendas.forEach(v=>{
+    const nome = vendaClienteDisplay(v) || v.nomeCliente;
+    if(!nome) return;
+    const key = normalize(nome);
+    if(!mapa[key]) mapa[key] = {nome, codigoCliente: v.codigoCliente||'', count:0};
+    mapa[key].count++;
+  });
+  return Object.values(mapa).sort((a,b)=> b.count - a.count);
+}
+
+function openClienteDropdown(inputEl){
+  const dd = document.getElementById('cliente-dropdown');
+  if(!dd) return;
+  filterClienteDropdown(inputEl.value, dd);
+  const rect = inputEl.getBoundingClientRect();
+  const space = window.innerHeight - rect.bottom;
+  dd.style.width = rect.width+'px';
+  dd.style.maxHeight = Math.min(220, Math.max(100, space-10))+'px';
+  if(space < 120 && rect.top > 120){
+    dd.style.top = 'auto';
+    dd.style.bottom = (inputEl.offsetHeight+2)+'px';
+  }else{
+    dd.style.bottom = 'auto';
+    dd.style.top = (inputEl.offsetHeight+2)+'px';
+  }
+  dd.classList.remove('hidden');
+}
+
+function filterClienteDropdown(query, dd){
+  if(!dd) return;
+  const term = normalize(query);
+  const clientes = getClientesConhecidos().filter(c=>
+    !term || normalize(c.nome).includes(term)
+  ).slice(0,12);
+  if(!clientes.length){
+    dd.innerHTML = `<div class="dd-empty">Nenhum cliente anterior encontrado — preencha manualmente.</div>`;
+  }else{
+    dd.innerHTML = clientes.map(c=>`
+      <div class="dd-item cliente-dd-item" data-nome="${escapeHtml(c.nome)}" data-codigo="${escapeHtml(c.codigoCliente)}">
+        <span class="dd-codigo">Cód: ${escapeHtml(c.codigoCliente||'—')} · ${c.count} compra(s)</span>
+        ${escapeHtml(c.nome)}
+      </div>`).join('');
+    dd.querySelectorAll('.cliente-dd-item').forEach(el=>{
+      el.addEventListener('mousedown', (e)=>{
+        e.preventDefault(); // evita blur antes do click
+        const nome = el.getAttribute('data-nome');
+        const cod = el.getAttribute('data-codigo');
+        const nomeInput = document.getElementById('v-nome');
+        const codInput = document.getElementById('v-codigo');
+        if(nomeInput){ nomeInput.value = nome; state.vendaDraft.nomeCliente = nome; }
+        if(codInput && cod){ codInput.value = cod; state.vendaDraft.codigoCliente = cod; }
+        dd.classList.add('hidden');
+      });
+    });
+  }
+}
+
+function closeClienteDropdown(){
+  const dd = document.getElementById('cliente-dropdown');
+  if(dd) dd.classList.add('hidden');
+}
+
+
 window.addEventListener('click', (e)=>{
   const dd = document.getElementById('produto-dropdown');
   if(!dd || dd.classList.contains('hidden')) return;
@@ -2814,6 +2883,18 @@ function attachHandlers(){
   if(btnAddVenda) btnAddVenda.addEventListener('click', ()=>{ state.vendaDraft = novoVendaDraft(); render(); });
   const btnCancelarVenda = document.getElementById('btn-cancelar-venda');
   if(btnCancelarVenda) btnCancelarVenda.addEventListener('click', ()=>{ state.vendaDraft = null; render(); });
+
+  // Autocomplete do nome do cliente
+  const vNomeInput = document.getElementById('v-nome');
+  if(vNomeInput){
+    vNomeInput.addEventListener('focus', (e)=> openClienteDropdown(e.target));
+    vNomeInput.addEventListener('input', (e)=>{
+      state.vendaDraft.nomeCliente = e.target.value;
+      const dd = document.getElementById('cliente-dropdown');
+      if(dd) filterClienteDropdown(e.target.value, dd);
+    });
+    vNomeInput.addEventListener('blur', ()=> setTimeout(closeClienteDropdown, 150));
+  }
   const btnSalvarVenda = document.getElementById('btn-salvar-venda');
   if(btnSalvarVenda) btnSalvarVenda.addEventListener('click', ()=>{
     const d = state.vendaDraft;

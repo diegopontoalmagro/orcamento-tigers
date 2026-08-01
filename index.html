@@ -2089,6 +2089,7 @@ function calcVendasStats(periodo){
 
   return {
     totalUsd, novosIntegradores, ticketMedio, porMes, mesesOrdenados,
+    totalVendas: vendas.length,
     crescimentoPercent, mesAtualLabel, mesAnteriorLabel,
     totalMesAtual, totalMesAnterior,
     projecaoMes, totalMesReal, diasNoMes, diaAtual, usarProjecao, labelMesRecente,
@@ -2343,7 +2344,7 @@ function buildDonutChart(porCategoria){
 function viewKPIs(){
   const stats = calcVendasStats();
   const sugestoes = gerarSugestoes(stats.porCliente);
-  const taxaConversao = state.vendas.length ? (stats.novosIntegradores.length / state.vendas.length) * 100 : null;
+  const taxaConversao = stats.totalVendas ? (stats.novosIntegradores.length / stats.totalVendas) * 100 : null;
   const meta = Number(state.kpiMeta)||0;
   const metaMesPercent = meta>0 ? Math.min(100, (stats.totalMesReal/meta)*100) : null;
 
@@ -2387,7 +2388,7 @@ function viewKPIs(){
       </div>
       <div class="card kpi-card" style="--accent:var(--blue);">
         <div class="kpi-icon">${ICONS.receipt}</div>
-        <div class="kpi-value" style="color:var(--blue);">${state.vendas.length}</div>
+        <div class="kpi-value" style="color:var(--blue);">${stats.totalVendas}</div>
         <div class="kpi-label">Notas registradas</div>
       </div>
       <div class="card kpi-card" style="--accent:var(--amber);">

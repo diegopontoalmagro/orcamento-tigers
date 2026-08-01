@@ -1991,11 +1991,20 @@ function filtrarVendasPorPeriodo(periodo){
   const trimestreStr = new Date(hoje.getTime() - 90*24*60*60*1000).toISOString().slice(0,10);
   const anoStr = String(anoHoje);
 
+  if(periodo === 'mes'){
+    // Tenta o mês atual; se não tiver dados, usa o mês mais recente com dados
+    const mesAtual = state.vendas.filter(v=>(v.diaCompra||'').startsWith(mesChaveHoje));
+    if(mesAtual.length > 0) return mesAtual;
+    // Fallback: mês mais recente com dados
+    const comData = state.vendas.filter(v=>v.diaCompra).sort((a,b)=>b.diaCompra.localeCompare(a.diaCompra));
+    const mesRecente = comData.length ? comData[0].diaCompra.slice(0,7) : null;
+    return mesRecente ? state.vendas.filter(v=>(v.diaCompra||'').startsWith(mesRecente)) : [];
+  }
+
   return state.vendas.filter(v=>{
     const d = v.diaCompra||'';
     if(!d) return false;
     if(periodo === 'semana')    return d >= semanaStr && d <= hojeStr;
-    if(periodo === 'mes')       return d.startsWith(mesChaveHoje);
     if(periodo === 'trimestre') return d >= trimestreStr && d <= hojeStr;
     if(periodo === 'ano')       return d.startsWith(anoStr);
     return true;
@@ -2338,7 +2347,15 @@ function viewKPIs(){
   const meta = Number(state.kpiMeta)||0;
   const metaMesPercent = meta>0 ? Math.min(100, (stats.totalMesReal/meta)*100) : null;
 
-  const periodoLabels = {tudo:'Todos os tempos', mes:'Este mês', trimestre:'Últimos 90 dias', ano:'Este ano', semana:'Esta semana'};
+  const periodoLabels = {tudo:'Todos os tempos', mes:`Este mês${(()=>{
+    const hoje = new Date();
+    const mesChaveHoje = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`;
+    const temMesAtual = state.vendas.some(v=>(v.diaCompra||'').startsWith(mesChaveHoje));
+    if(temMesAtual) return '';
+    const comData = state.vendas.filter(v=>v.diaCompra).sort((a,b)=>b.diaCompra.localeCompare(a.diaCompra));
+    if(!comData.length) return '';
+    return ' ('+vendaMesLabel(comData[0].diaCompra.slice(0,7)+'-01')+')';
+  })()}`, trimestre:'Últimos 90 dias', ano:'Este ano', semana:'Esta semana'};
 
   return `
     <div class="page-header">

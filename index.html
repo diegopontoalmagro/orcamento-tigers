@@ -2035,14 +2035,23 @@ function calcVendasStats(periodo){
     mesAtualLabel = porMes[mesesOrdenados[0]].label;
   }
 
-  // Projeção do mês atual (dias decorridos vs dias no mês)
+  // Projeção: usa o mês mais recente que tem dados (não o mês calendário atual que pode estar vazio)
   const hoje = new Date();
   const diasNoMes = new Date(hoje.getFullYear(), hoje.getMonth()+1, 0).getDate();
   const diaAtual = hoje.getDate();
-  const mesChave = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`;
-  const vendasMesAtual = todasVendas.filter(v=>(v.diaCompra||'').startsWith(mesChave));
-  const totalMesReal = vendasMesAtual.reduce((s,v)=>s+(Number(v.valor)||0),0);
-  const projecaoMes = diaAtual > 0 ? (totalMesReal / diaAtual) * diasNoMes : 0;
+
+  // Pega todas as vendas ordenadas por data para encontrar o mês mais recente com dados
+  const todasOrdenadas = [...todasVendas].filter(v=>v.diaCompra).sort((a,b)=>b.diaCompra.localeCompare(a.diaCompra));
+  const mesChaveMaisRecente = todasOrdenadas.length ? todasOrdenadas[0].diaCompra.slice(0,7) : null;
+  const mesChaveHoje = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`;
+
+  // Se o mês mais recente com dados for o mês atual, usa dias decorridos para projetar
+  // Se for um mês passado, a projeção não se aplica (mês já fechado)
+  const usarProjecao = mesChaveMaisRecente === mesChaveHoje;
+  const vendasMesRecente = todasVendas.filter(v=>(v.diaCompra||'').startsWith(mesChaveMaisRecente||'XXXX'));
+  const totalMesReal = vendasMesRecente.reduce((s,v)=>s+(Number(v.valor)||0),0);
+  const projecaoMes = usarProjecao && diaAtual > 0 ? (totalMesReal / diaAtual) * diasNoMes : null;
+  const labelMesRecente = mesChaveMaisRecente ? vendaMesLabel(mesChaveMaisRecente+'-01') : '';
 
   const porCategoria = {};
   vendas.forEach(v=>{
@@ -2074,7 +2083,7 @@ function calcVendasStats(periodo){
     totalUsd, novosIntegradores, ticketMedio, porMes, mesesOrdenados,
     crescimentoPercent, mesAtualLabel, mesAnteriorLabel,
     totalMesAtual, totalMesAnterior,
-    projecaoMes, totalMesReal, diasNoMes, diaAtual,
+    projecaoMes, totalMesReal, diasNoMes, diaAtual, usarProjecao, labelMesRecente,
     porCategoria, porCliente, clientesComRede, clientesComRedeECftv, penetracaoCftv,
     topCategoria, topCliente
   };
@@ -2379,7 +2388,7 @@ function viewKPIs(){
     </div>
 
     <!-- Meta mensal + projeção -->
-    ${(meta>0 || stats.projecaoMes>0) ? `
+    ${(meta>0 || stats.totalMesReal>0) ? `
     <div class="grid grid-2" style="margin-bottom:22px;gap:18px;">
       ${meta>0 ? `
       <div class="card">
@@ -2394,10 +2403,17 @@ function viewKPIs(){
         <div style="font-size:12px;color:var(--text-muted);margin-top:6px;">${(metaMesPercent||0).toFixed(1)}% da meta ${stats.totalMesReal>=meta ? '🎉' : `— faltam ${fmtUSD(Math.max(0,meta-stats.totalMesReal))}`}</div>
       </div>` : '<div></div>'}
       <div class="card">
-        <div class="section-title" style="margin-bottom:12px;">Projeção do mês atual</div>
-        <div class="stat-value" style="color:var(--violet);font-size:26px;">${fmtUSD(stats.projecaoMes)}</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-top:6px;">Baseado no ritmo dos últimos ${stats.diaAtual} dia(s) — extrapolado para ${stats.diasNoMes} dias</div>
-        ${meta>0 ? `<div style="font-size:12px;margin-top:4px;color:${stats.projecaoMes>=meta?'var(--teal)':'var(--danger)'};">${stats.projecaoMes>=meta?'✓ Projeção acima da meta':'⚠ Projeção abaixo da meta'}</div>` : ''}
+        <div class="section-title" style="margin-bottom:12px;">
+          ${stats.usarProjecao ? 'Projeção do mês atual' : `Fechamento — ${stats.labelMesRecente}`}
+        </div>
+        ${stats.usarProjecao ? `
+          <div class="stat-value" style="font-size:26px;color:var(--violet);">${fmtUSD(stats.projecaoMes||0)}</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:6px;">Baseado em ${fmtUSD(stats.totalMesReal)} nos primeiros ${stats.diaAtual} dia(s) de ${stats.diasNoMes}</div>
+          ${meta>0 ? `<div style="font-size:12px;margin-top:4px;color:${(stats.projecaoMes||0)>=meta?'var(--teal)':'var(--danger)'};">${(stats.projecaoMes||0)>=meta?'✓ Projeção acima da meta':'⚠ Projeção abaixo da meta'}</div>` : ''}
+        ` : `
+          <div class="stat-value" style="font-size:26px;color:var(--teal);">${fmtUSD(stats.totalMesReal)}</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:6px;">Mês mais recente com dados (já encerrado)</div>
+        `}
       </div>
     </div>` : ''}
 

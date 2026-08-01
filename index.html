@@ -466,6 +466,8 @@ let state = {
   },
   vendaDraft: null, // quando não-nulo, formulário de venda está aberto (novo ou edição)
   produtoSearch: '',
+  kpiPeriodo: 'tudo', // 'semana' | 'mes' | 'trimestre' | 'ano' | 'tudo'
+  kpiMeta: '', // meta mensal em USD (string para facilitar input)
   produtoCategoriaFiltro: '',
   editingOrcamentoId: null
 };
@@ -1616,6 +1618,12 @@ function buildLucroRealTotaisHTML(totais){
   `;
 }
 
+function refreshKPIMeta(){
+  // Atualiza apenas a barra de meta sem re-renderizar a página toda
+  if(state.view !== 'kpis') return;
+  render(); // KPI é leve o suficiente para re-render completo
+}
+
 function refreshLucroRealTotais(){
   const d = state.lucroRealDraft;
   if(!d) return;
@@ -1971,8 +1979,34 @@ function vendaMesLabel(diaCompra){
   return `${meses[Number(m)-1]}/${y}`;
 }
 
-function calcVendasStats(){
+function filtrarVendasPorPeriodo(periodo){
+  const hoje = new Date();
   const vendas = state.vendas;
+  if(!periodo || periodo === 'tudo') return vendas;
+  return vendas.filter(v=>{
+    if(!v.diaCompra) return false;
+    const d = new Date(v.diaCompra+'T00:00:00');
+    if(periodo === 'semana'){
+      const diff = (hoje - d) / (1000*60*60*24);
+      return diff <= 7;
+    }
+    if(periodo === 'mes'){
+      return d.getFullYear()===hoje.getFullYear() && d.getMonth()===hoje.getMonth();
+    }
+    if(periodo === 'trimestre'){
+      const diff = (hoje - d) / (1000*60*60*24);
+      return diff <= 90;
+    }
+    if(periodo === 'ano'){
+      return d.getFullYear()===hoje.getFullYear();
+    }
+    return true;
+  });
+}
+
+function calcVendasStats(periodo){
+  const vendas = filtrarVendasPorPeriodo(periodo || state.kpiPeriodo);
+  const todasVendas = state.vendas; // sempre todas para projeção
   const totalUsd = vendas.reduce((s,v)=> s + (Number(v.valor)||0), 0);
   const novosIntegradores = vendas.filter(v=>v.novoIntegrador);
   const ticketMedio = vendas.length ? totalUsd / vendas.length : 0;
@@ -1987,12 +2021,28 @@ function calcVendasStats(){
   const mesesOrdenados = Object.keys(porMes).filter(k=>k!=='sem-data').sort();
 
   let crescimentoPercent = null, mesAtualLabel = '', mesAnteriorLabel = '';
+  let totalMesAtual = 0, totalMesAnterior = 0;
   if(mesesOrdenados.length >= 2){
-    const atual = porMes[mesesOrdenados[mesesOrdenados.length-1]];
-    const anterior = porMes[mesesOrdenados[mesesOrdenados.length-2]];
-    mesAtualLabel = atual.label; mesAnteriorLabel = anterior.label;
-    crescimentoPercent = anterior.total > 0 ? ((atual.total - anterior.total) / anterior.total) * 100 : null;
+    const kAtual = mesesOrdenados[mesesOrdenados.length-1];
+    const kAnterior = mesesOrdenados[mesesOrdenados.length-2];
+    totalMesAtual = porMes[kAtual].total;
+    totalMesAnterior = porMes[kAnterior].total;
+    mesAtualLabel = porMes[kAtual].label;
+    mesAnteriorLabel = porMes[kAnterior].label;
+    crescimentoPercent = totalMesAnterior > 0 ? ((totalMesAtual - totalMesAnterior) / totalMesAnterior) * 100 : null;
+  } else if(mesesOrdenados.length === 1){
+    totalMesAtual = porMes[mesesOrdenados[0]].total;
+    mesAtualLabel = porMes[mesesOrdenados[0]].label;
   }
+
+  // Projeção do mês atual (dias decorridos vs dias no mês)
+  const hoje = new Date();
+  const diasNoMes = new Date(hoje.getFullYear(), hoje.getMonth()+1, 0).getDate();
+  const diaAtual = hoje.getDate();
+  const mesChave = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`;
+  const vendasMesAtual = todasVendas.filter(v=>(v.diaCompra||'').startsWith(mesChave));
+  const totalMesReal = vendasMesAtual.reduce((s,v)=>s+(Number(v.valor)||0),0);
+  const projecaoMes = diaAtual > 0 ? (totalMesReal / diaAtual) * diasNoMes : 0;
 
   const porCategoria = {};
   vendas.forEach(v=>{
@@ -2023,6 +2073,8 @@ function calcVendasStats(){
   return {
     totalUsd, novosIntegradores, ticketMedio, porMes, mesesOrdenados,
     crescimentoPercent, mesAtualLabel, mesAnteriorLabel,
+    totalMesAtual, totalMesAnterior,
+    projecaoMes, totalMesReal, diasNoMes, diaAtual,
     porCategoria, porCliente, clientesComRede, clientesComRedeECftv, penetracaoCftv,
     topCategoria, topCliente
   };
@@ -2176,27 +2228,137 @@ function viewVendas(){
 }
 
 /* ===================== KPIs (DASHBOARD ANALÍTICO) ===================== */
+function buildSVGBar(mesesOrdenados, porMes, meta){
+  if(!mesesOrdenados.length) return '<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px;">Sem dados para exibir</div>';
+  const W=560, H=180, PAD_L=56, PAD_B=32, PAD_T=14, PAD_R=16;
+  const innerW = W - PAD_L - PAD_R;
+  const innerH = H - PAD_T - PAD_B;
+  const vals = mesesOrdenados.map(k=>porMes[k].total);
+  const maxVal = Math.max(...vals, meta||0) * 1.12 || 1;
+  const barW = Math.max(12, Math.min(40, innerW/mesesOrdenados.length - 6));
+  const step = innerW / mesesOrdenados.length;
+
+  const bars = mesesOrdenados.map((k,i)=>{
+    const v = porMes[k].total;
+    const bh = (v/maxVal)*innerH;
+    const x = PAD_L + i*step + (step-barW)/2;
+    const y = PAD_T + innerH - bh;
+    const label = porMes[k].label;
+    return `
+      <rect x="${x}" y="${y}" width="${barW}" height="${bh}" rx="3" fill="url(#barGrad)" opacity="0.9"/>
+      <text x="${x+barW/2}" y="${H-PAD_B+14}" text-anchor="middle" font-size="10" fill="var(--text-muted)">${label.split('/')[0]}</text>
+      <text x="${x+barW/2}" y="${y-4}" text-anchor="middle" font-size="9" fill="var(--text-muted)">${v>=1000?'$'+(v/1000).toFixed(1)+'k':'$'+v.toFixed(0)}</text>
+    `;
+  }).join('');
+
+  // trend line
+  const points = mesesOrdenados.map((k,i)=>{
+    const v = porMes[k].total;
+    const x = PAD_L + i*step + step/2;
+    const y = PAD_T + innerH - (v/maxVal)*innerH;
+    return `${x},${y}`;
+  }).join(' ');
+  const trendLine = mesesOrdenados.length>1 ? `<polyline points="${points}" fill="none" stroke="var(--stripe)" stroke-width="2" stroke-dasharray="4 2" opacity="0.7"/>` : '';
+
+  // meta line
+  const metaLine = meta>0 ? `
+    <line x1="${PAD_L}" y1="${PAD_T + innerH - (meta/maxVal)*innerH}" x2="${W-PAD_R}" y2="${PAD_T + innerH - (meta/maxVal)*innerH}" stroke="var(--amber)" stroke-width="1.5" stroke-dasharray="6 3"/>
+    <text x="${W-PAD_R-2}" y="${PAD_T + innerH - (meta/maxVal)*innerH - 3}" text-anchor="end" font-size="9" fill="var(--amber)">meta ${fmtUSD(meta)}</text>
+  ` : '';
+
+  // y axis labels
+  const ySteps = [0, 0.25, 0.5, 0.75, 1];
+  const yLabels = ySteps.map(s=>{
+    const v = maxVal*s;
+    const y = PAD_T + innerH - s*innerH;
+    return `<text x="${PAD_L-4}" y="${y+3}" text-anchor="end" font-size="9" fill="var(--text-muted)">${v>=1000?'$'+(v/1000).toFixed(0)+'k':'$'+v.toFixed(0)}</text>
+    <line x1="${PAD_L}" y1="${y}" x2="${W-PAD_R}" y2="${y}" stroke="var(--border)" stroke-width="0.5"/>`;
+  }).join('');
+
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px;height:${H}px;">
+    <defs>
+      <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="var(--teal)"/>
+        <stop offset="100%" stop-color="var(--amber)" stop-opacity="0.7"/>
+      </linearGradient>
+    </defs>
+    ${yLabels}${bars}${trendLine}${metaLine}
+  </svg>`;
+}
+
+function buildDonutChart(porCategoria){
+  const entries = Object.entries(porCategoria).sort((a,b)=>b[1].total-a[1].total).slice(0,6);
+  if(!entries.length) return '<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px;">Marque categorias nas vendas</div>';
+  const total = entries.reduce((s,[,d])=>s+d.total,0)||1;
+  const colors = ['var(--teal)','var(--amber)','var(--stripe)','var(--blue)','var(--violet)','var(--danger)'];
+  const R=60, cx=80, cy=75, ri=36;
+  let startAngle = -Math.PI/2;
+  const slices = entries.map(([cat,d],i)=>{
+    const frac = d.total/total;
+    const angle = frac * 2 * Math.PI;
+    const x1 = cx + R*Math.cos(startAngle);
+    const y1 = cy + R*Math.sin(startAngle);
+    startAngle += angle;
+    const x2 = cx + R*Math.cos(startAngle);
+    const y2 = cy + R*Math.sin(startAngle);
+    const large = angle > Math.PI ? 1 : 0;
+    const xi1 = cx + ri*Math.cos(startAngle-angle);
+    const yi1 = cy + ri*Math.sin(startAngle-angle);
+    const xi2 = cx + ri*Math.cos(startAngle);
+    const yi2 = cy + ri*Math.sin(startAngle);
+    return `<path d="M${x1},${y1} A${R},${R} 0 ${large},1 ${x2},${y2} L${xi2},${yi2} A${ri},${ri} 0 ${large},0 ${xi1},${yi1} Z" fill="${colors[i]}" opacity="0.85"/>`;
+  }).join('');
+  const legend = entries.map(([cat,d],i)=>`
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;font-size:12px;">
+      <span style="width:10px;height:10px;border-radius:2px;background:${colors[i]};flex-shrink:0;display:inline-block;"></span>
+      <span style="color:var(--text-muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(cat)}">${escapeHtml(cat.replace('Redes — ','').replace('CFTV — ',''))}</span>
+      <span class="mono" style="color:var(--text-muted);">${(d.total/total*100).toFixed(0)}%</span>
+    </div>`).join('');
+  return `<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;">
+    <svg viewBox="0 0 160 150" style="width:160px;height:150px;flex-shrink:0;">
+      ${slices}
+      <text x="${cx}" y="${cy+5}" text-anchor="middle" font-size="11" fill="var(--text-muted)">${fmtUSD(total)}</text>
+    </svg>
+    <div style="flex:1;min-width:160px;">${legend}</div>
+  </div>`;
+}
+
 function viewKPIs(){
   const stats = calcVendasStats();
   const sugestoes = gerarSugestoes(stats.porCliente);
-  const maxCat = Math.max(1, ...Object.values(stats.porCategoria).map(c=>c.total));
-  const maxMes = Math.max(1, ...stats.mesesOrdenados.map(k=>stats.porMes[k].total));
   const taxaConversao = state.vendas.length ? (stats.novosIntegradores.length / state.vendas.length) * 100 : null;
+  const meta = Number(state.kpiMeta)||0;
+  const metaMesPercent = meta>0 ? Math.min(100, (stats.totalMesReal/meta)*100) : null;
+
+  const periodoLabels = {tudo:'Todos os tempos', mes:'Este mês', trimestre:'Últimos 90 dias', ano:'Este ano', semana:'Esta semana'};
 
   return `
     <div class="page-header">
       <div>
         <div class="page-title">KPIs</div>
-        <div class="page-desc">Indicadores de desempenho comercial, calculados a partir das vendas registradas</div>
+        <div class="page-desc">Indicadores de desempenho comercial — ${periodoLabels[state.kpiPeriodo]||'Todos os tempos'}</div>
       </div>
     </div>
 
-    <div class="grid grid-4" style="margin-bottom:28px;">
+    <!-- Filtro de período -->
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:22px;">
+      ${['semana','mes','trimestre','ano','tudo'].map(p=>`
+        <button class="btn-${state.kpiPeriodo===p?'primary':'secondary'} kpi-periodo-btn" data-periodo="${p}" style="font-size:12px;padding:7px 14px;">
+          ${periodoLabels[p]}
+        </button>`).join('')}
+      <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
+        <span style="font-size:12px;color:var(--text-muted);">Meta mensal (USD):</span>
+        <input id="kpi-meta-input" type="number" min="0" step="100" value="${escapeHtml(state.kpiMeta)}" placeholder="Ex: 5000" style="width:110px;font-size:12px;">
+      </div>
+    </div>
+
+    <!-- Cards KPI -->
+    <div class="grid grid-4" style="margin-bottom:22px;">
       <div class="card kpi-card" style="--accent:var(--teal);">
         <div class="kpi-icon">${ICONS.money}</div>
         <div class="kpi-value" style="color:var(--teal);">${fmtUSD(stats.totalUsd)}</div>
         <div class="kpi-label">Total vendido</div>
-        ${stats.crescimentoPercent!==null ? `<div style="font-size:12px;margin-top:6px;color:${stats.crescimentoPercent>=0?'var(--teal)':'var(--danger)'};">${stats.crescimentoPercent>=0?'▲':'▼'} ${Math.abs(stats.crescimentoPercent).toFixed(1)}% vs. mês anterior</div>` : ''}
+        ${stats.crescimentoPercent!==null ? `<div style="font-size:12px;margin-top:6px;color:${stats.crescimentoPercent>=0?'var(--teal)':'var(--danger)'};">${stats.crescimentoPercent>=0?'▲':'▼'} ${Math.abs(stats.crescimentoPercent).toFixed(1)}% vs ${stats.mesAnteriorLabel}</div>` : ''}
       </div>
       <div class="card kpi-card" style="--accent:var(--blue);">
         <div class="kpi-icon">${ICONS.receipt}</div>
@@ -2211,77 +2373,89 @@ function viewKPIs(){
       <div class="card kpi-card" style="--accent:var(--stripe);">
         <div class="kpi-icon">${ICONS.users}</div>
         <div class="kpi-value" style="color:var(--stripe);">${stats.novosIntegradores.length}</div>
-        <div class="kpi-label">Novos integradores captados</div>
-      </div>
-      <div class="card kpi-card" style="--accent:var(--violet);">
-        <div class="kpi-icon">${ICONS.star}</div>
-        <div class="kpi-value" style="color:var(--violet);">${taxaConversao!==null ? taxaConversao.toFixed(0)+'%' : '—'}</div>
-        <div class="kpi-label">Taxa de conversão (novos integradores)</div>
-      </div>
-      <div class="card kpi-card" style="--accent:var(--danger);">
-        <div class="kpi-icon">${ICONS.vendas}</div>
-        <div class="kpi-value" style="color:var(--danger);">${stats.penetracaoCftv!==null ? stats.penetracaoCftv.toFixed(0)+'%' : '—'}</div>
-        <div class="kpi-label">Penetração CFTV na base de redes</div>
-        <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">${stats.clientesComRedeECftv.length}/${stats.clientesComRede.length} cliente(s)</div>
+        <div class="kpi-label">Novos integradores</div>
+        ${taxaConversao!==null ? `<div style="font-size:12px;margin-top:6px;color:var(--text-muted);">Taxa: ${taxaConversao.toFixed(0)}%</div>` : ''}
       </div>
     </div>
 
-    <div class="card" style="margin-bottom:28px;">
-      <div class="section-title" style="margin-bottom:14px;">Resumo executivo</div>
+    <!-- Meta mensal + projeção -->
+    ${(meta>0 || stats.projecaoMes>0) ? `
+    <div class="grid grid-2" style="margin-bottom:22px;gap:18px;">
+      ${meta>0 ? `
+      <div class="card">
+        <div class="section-title" style="margin-bottom:12px;">Meta mensal — ${stats.totalMesReal>=meta ? '✓ Atingida!' : 'Em andamento'}</div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:8px;">
+          <span style="color:var(--text-muted);">Realizado: <strong style="color:var(--text);">${fmtUSD(stats.totalMesReal)}</strong></span>
+          <span style="color:var(--text-muted);">Meta: ${fmtUSD(meta)}</span>
+        </div>
+        <div style="height:10px;background:var(--surface-3);border-radius:6px;overflow:hidden;">
+          <div style="height:100%;width:${metaMesPercent||0}%;background:linear-gradient(90deg,var(--teal),var(--amber));border-radius:6px;transition:width .4s;"></div>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:6px;">${(metaMesPercent||0).toFixed(1)}% da meta ${stats.totalMesReal>=meta ? '🎉' : `— faltam ${fmtUSD(Math.max(0,meta-stats.totalMesReal))}`}</div>
+      </div>` : '<div></div>'}
+      <div class="card">
+        <div class="section-title" style="margin-bottom:12px;">Projeção do mês atual</div>
+        <div class="stat-value" style="color:var(--violet);font-size:26px;">${fmtUSD(stats.projecaoMes)}</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:6px;">Baseado no ritmo dos últimos ${stats.diaAtual} dia(s) — extrapolado para ${stats.diasNoMes} dias</div>
+        ${meta>0 ? `<div style="font-size:12px;margin-top:4px;color:${stats.projecaoMes>=meta?'var(--teal)':'var(--danger)'};">${stats.projecaoMes>=meta?'✓ Projeção acima da meta':'⚠ Projeção abaixo da meta'}</div>` : ''}
+      </div>
+    </div>` : ''}
+
+    <!-- Gráfico de barras: vendas por mês -->
+    <div class="card" style="margin-bottom:22px;">
+      <div class="section-title" style="margin-bottom:16px;">Evolução de vendas por mês</div>
+      ${buildSVGBar(stats.mesesOrdenados, stats.porMes, meta)}
+      ${stats.mesesOrdenados.length>1 ? `<div style="font-size:11px;color:var(--text-muted);margin-top:8px;">— — tendência &nbsp;&nbsp; <span style="color:var(--amber);">— meta mensal</span></div>` : ''}
+    </div>
+
+    <!-- Donut + top categorias -->
+    <div class="grid grid-2" style="margin-bottom:22px;gap:18px;">
+      <div class="card">
+        <div class="section-title" style="margin-bottom:14px;">Vendas por categoria</div>
+        ${buildDonutChart(stats.porCategoria)}
+      </div>
+      <div class="card">
+        <div class="section-title" style="margin-bottom:14px;">Top clientes</div>
+        ${Object.values(stats.porCliente).sort((a,b)=>b.total-a.total).slice(0,8).map((c,i)=>{
+          const maxT = Math.max(...Object.values(stats.porCliente).map(x=>x.total))||1;
+          return `<div style="margin-bottom:10px;">
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
+              <span style="color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:65%;">${escapeHtml(c.nome)}</span>
+              <span class="mono">${fmtUSD(c.total)}</span>
+            </div>
+            <div style="height:6px;background:var(--surface-3);border-radius:3px;overflow:hidden;">
+              <div style="height:100%;width:${(c.total/maxT*100)}%;background:linear-gradient(90deg,var(--blue),var(--violet));border-radius:3px;"></div>
+            </div>
+          </div>`;
+        }).join('') || emptyState('Nenhuma venda ainda.')}
+      </div>
+    </div>
+
+    <!-- Resumo executivo -->
+    <div class="card" style="margin-bottom:22px;">
+      <div class="section-title" style="margin-bottom:10px;">Resumo executivo</div>
       <div style="font-size:13px;color:var(--text-muted);line-height:1.8;">${escapeHtml(gerarResumoExecutivo(stats))}</div>
     </div>
 
-    <div class="grid grid-2" style="margin-bottom:28px;gap:18px;">
-      <div class="card">
-        <div class="section-title" style="margin-bottom:16px;">Vendas por mês</div>
-        ${stats.mesesOrdenados.length ? stats.mesesOrdenados.map(k=>{
-          const m = stats.porMes[k];
-          return `<div style="margin-bottom:14px;">
-            <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-muted);margin-bottom:5px;"><span>${escapeHtml(m.label)}</span><span class="mono">${fmtUSD(m.total)} · ${m.count} nota(s)</span></div>
-            <div style="height:8px;background:var(--surface-3);border-radius:4px;overflow:hidden;"><div style="height:100%;width:${(m.total/maxMes*100)}%;background:linear-gradient(90deg,var(--amber),var(--stripe));border-radius:4px;"></div></div>
-          </div>`;
-        }).join('') : emptyState('Nenhuma venda registrada ainda.')}
-      </div>
-      <div class="card">
-        <div class="section-title" style="margin-bottom:16px;">O que mais vende (por categoria)</div>
-        ${Object.keys(stats.porCategoria).length ? Object.entries(stats.porCategoria).sort((a,b)=>b[1].total-a[1].total).slice(0,10).map(([cat,d])=>`
-          <div style="margin-bottom:14px;">
-            <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-muted);margin-bottom:5px;"><span>${escapeHtml(cat)}</span><span class="mono">${fmtUSD(d.total)}</span></div>
-            <div style="height:8px;background:var(--surface-3);border-radius:4px;overflow:hidden;"><div style="height:100%;width:${(d.total/maxCat*100)}%;background:linear-gradient(90deg,var(--teal),var(--amber));border-radius:4px;"></div></div>
-          </div>`).join('') : emptyState('Marque categorias nas vendas para ver o que mais vende.')}
-      </div>
-    </div>
-
-    <div class="card" style="margin-bottom:28px;">
-      <div class="section-title" style="margin-bottom:8px;">Oportunidades de venda (por cliente)</div>
-      <div style="font-size:12px;color:var(--text-muted);margin-bottom:18px;">Baseado no que cada cliente já comprou — prioridade para integradores ainda sem CFTV Hikvision.</div>
-      ${sugestoes.filter(s=>s.sugestao && s.prioridade>0).length ? sugestoes.filter(s=>s.sugestao && s.prioridade>0).slice(0,12).map(s=>`
-        <div class="card opp-card ${s.prioridade===3?'hot':''}" style="margin-bottom:12px;padding:16px;">
-          <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+    <!-- Oportunidades -->
+    <div class="card" style="margin-bottom:22px;">
+      <div class="section-title" style="margin-bottom:8px;">Oportunidades de venda</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px;">Prioridade: clientes de rede sem CFTV Hikvision ainda</div>
+      ${sugestoes.filter(s=>s.sugestao&&s.prioridade>0).slice(0,8).map(s=>`
+        <div class="card opp-card ${s.prioridade===3?'hot':''}" style="margin-bottom:10px;padding:14px;">
+          <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;">
             <strong>${escapeHtml(s.nome)}</strong>
-            <span class="mono" style="font-size:12px;color:var(--text-muted);">${fmtUSD(s.total)} · ${s.count} nota(s)</span>
+            <span class="mono" style="font-size:12px;color:var(--text-muted);">${fmtUSD(s.total)}</span>
           </div>
-          <div style="font-size:13px;color:var(--text-muted);margin-top:8px;">${escapeHtml(s.sugestao)}</div>
-          ${s.categorias.length ? `<div style="font-size:11px;color:var(--text-muted);margin-top:8px;">Já compra: ${s.categorias.map(escapeHtml).join(', ')}</div>` : ''}
-        </div>`).join('') : emptyState('Cadastre categorias nas vendas para ver oportunidades de venda.')}
+          <div style="font-size:12px;color:var(--text-muted);margin-top:6px;">${escapeHtml(s.sugestao)}</div>
+        </div>`).join('') || emptyState('Cadastre categorias nas vendas para ver oportunidades.')}
     </div>
 
+    <!-- Penetração CFTV -->
     <div class="card">
-      <div class="section-title" style="margin-bottom:16px;">Top clientes</div>
-      <div style="overflow-x:auto;">
-      <table>
-        <thead><tr><th>Cliente</th><th class="right">Total</th><th class="right">Notas</th><th>Categorias</th></tr></thead>
-        <tbody>
-          ${Object.values(stats.porCliente).sort((a,b)=>b.total-a.total).slice(0,15).map(c=>`
-            <tr>
-              <td>${escapeHtml(c.nome)}</td>
-              <td class="right mono">${fmtUSD(c.total)}</td>
-              <td class="right mono">${c.count}</td>
-              <td style="font-size:12px;color:var(--text-muted);">${Array.from(c.categorias).map(escapeHtml).join(', ') || '-'}</td>
-            </tr>`).join('')}
-        </tbody>
-      </table>
-      </div>
+      <div class="section-title" style="margin-bottom:10px;">Penetração CFTV na base de redes</div>
+      <div class="stat-value" style="font-size:32px;color:${stats.penetracaoCftv!==null&&stats.penetracaoCftv<50?'var(--stripe)':'var(--text)'};">${stats.penetracaoCftv!==null ? stats.penetracaoCftv.toFixed(0)+'%' : '—'}</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:6px;">${stats.clientesComRedeECftv.length} de ${stats.clientesComRede.length} cliente(s) de rede já compram CFTV</div>
     </div>
   `;
 }
@@ -3272,6 +3446,20 @@ function attachHandlers(){
     });
   });
 
+  // KPI período e meta
+  document.querySelectorAll('.kpi-periodo-btn').forEach(el=>{
+    el.addEventListener('click', (e)=>{
+      state.kpiPeriodo = e.currentTarget.getAttribute('data-periodo');
+      render();
+    });
+  });
+  const kpiMetaInput = document.getElementById('kpi-meta-input');
+  if(kpiMetaInput) kpiMetaInput.addEventListener('input', (e)=>{
+    state.kpiMeta = e.target.value;
+    try{ localStorage.setItem('tigers_kpi_meta', e.target.value); }catch(err){}
+    refreshKPIMeta();
+  });
+
   // Analisar Orçamento
   const aoFileInput = document.getElementById('ao-file-input');
   if(aoFileInput) aoFileInput.addEventListener('change', async (e)=>{
@@ -3390,6 +3578,7 @@ async function init(){
   state.orcamentos = await DB.get('orcamentos', []);
   state.vendas = await DB.get('vendas', []);
   state.presupuestosPy = await DB.get('presupuestosPy', []);
+  try{ const meta = localStorage.getItem('tigers_kpi_meta'); if(meta) state.kpiMeta = meta; }catch(e){}
   state.lucroReal = await DB.get('lucroReal', []);
   render();
 }

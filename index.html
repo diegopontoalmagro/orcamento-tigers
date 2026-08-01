@@ -1980,26 +1980,24 @@ function vendaMesLabel(diaCompra){
 }
 
 function filtrarVendasPorPeriodo(periodo){
+  if(!periodo || periodo === 'tudo') return state.vendas;
   const hoje = new Date();
-  const vendas = state.vendas;
-  if(!periodo || periodo === 'tudo') return vendas;
-  return vendas.filter(v=>{
-    if(!v.diaCompra) return false;
-    const d = new Date(v.diaCompra+'T00:00:00');
-    if(periodo === 'semana'){
-      const diff = (hoje - d) / (1000*60*60*24);
-      return diff <= 7;
-    }
-    if(periodo === 'mes'){
-      return d.getFullYear()===hoje.getFullYear() && d.getMonth()===hoje.getMonth();
-    }
-    if(periodo === 'trimestre'){
-      const diff = (hoje - d) / (1000*60*60*24);
-      return diff <= 90;
-    }
-    if(periodo === 'ano'){
-      return d.getFullYear()===hoje.getFullYear();
-    }
+  const anoHoje = hoje.getFullYear();
+  const mesNum = String(hoje.getMonth()+1).padStart(2,'0');
+  const diaNum = String(hoje.getDate()).padStart(2,'0');
+  const mesChaveHoje = `${anoHoje}-${mesNum}`;
+  const hojeStr = `${anoHoje}-${mesNum}-${diaNum}`;
+  const semanaStr = new Date(hoje.getTime() - 7*24*60*60*1000).toISOString().slice(0,10);
+  const trimestreStr = new Date(hoje.getTime() - 90*24*60*60*1000).toISOString().slice(0,10);
+  const anoStr = String(anoHoje);
+
+  return state.vendas.filter(v=>{
+    const d = v.diaCompra||'';
+    if(!d) return false;
+    if(periodo === 'semana')    return d >= semanaStr && d <= hojeStr;
+    if(periodo === 'mes')       return d.startsWith(mesChaveHoje);
+    if(periodo === 'trimestre') return d >= trimestreStr && d <= hojeStr;
+    if(periodo === 'ano')       return d.startsWith(anoStr);
     return true;
   });
 }
@@ -2037,16 +2035,17 @@ function calcVendasStats(periodo){
 
   // Projeção: usa o mês mais recente que tem dados (não o mês calendário atual que pode estar vazio)
   const hoje = new Date();
-  const diasNoMes = new Date(hoje.getFullYear(), hoje.getMonth()+1, 0).getDate();
+  const anoHoje = hoje.getFullYear();
+  const mesNum = String(hoje.getMonth()+1).padStart(2,'0');
+  const diaNum = String(hoje.getDate()).padStart(2,'0');
+  const diasNoMes = new Date(anoHoje, hoje.getMonth()+1, 0).getDate();
   const diaAtual = hoje.getDate();
+  const mesChaveHoje = `${anoHoje}-${mesNum}`;
 
-  // Pega todas as vendas ordenadas por data para encontrar o mês mais recente com dados
+  // Pega o mês mais recente com dados
   const todasOrdenadas = [...todasVendas].filter(v=>v.diaCompra).sort((a,b)=>b.diaCompra.localeCompare(a.diaCompra));
   const mesChaveMaisRecente = todasOrdenadas.length ? todasOrdenadas[0].diaCompra.slice(0,7) : null;
-  const mesChaveHoje = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`;
 
-  // Se o mês mais recente com dados for o mês atual, usa dias decorridos para projetar
-  // Se for um mês passado, a projeção não se aplica (mês já fechado)
   const usarProjecao = mesChaveMaisRecente === mesChaveHoje;
   const vendasMesRecente = todasVendas.filter(v=>(v.diaCompra||'').startsWith(mesChaveMaisRecente||'XXXX'));
   const totalMesReal = vendasMesRecente.reduce((s,v)=>s+(Number(v.valor)||0),0);

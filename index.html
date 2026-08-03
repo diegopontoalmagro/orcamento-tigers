@@ -1141,7 +1141,7 @@ function buildTotaisHTML(d, totais){
     <div class="totals-row"><span>Total em USD</span><span class="v">${fmtUSD(totais.totalUsd)}</span></div>
     <div class="totals-row"><span>Conversão para BRL</span><span class="v">${fmtBRL(totais.totalBrl)}</span></div>
     ${totais.taxaCidadePercent ? `<div class="totals-row"><span>Taxa da cidade / frete (${totais.taxaCidadePercent}%)</span><span class="v">${fmtBRL(totais.valorTaxaCidade)}</span></div>` : ''}
-    ${d.incluirNF ? `<div class="totals-row"><span>Nota Fiscal (+${totais.nfPercent}%)</span><span class="v">${fmtBRL(totais.totalBrlFinal*(totais.nfPercent/100))}</span></div>` : ''}
+    ${d.incluirNF ? `<div class="totals-row"><span>Nota Fiscal</span><span class="v">${fmtBRL(totais.totalBrlFinal*(totais.nfPercent/100))}</span></div>` : ''}
     <div class="totals-row final"><span>Total final</span><span class="v">${fmtBRL(totais.totalFinal)}</span></div>
   `;
 }
@@ -2870,7 +2870,7 @@ function exportPDF(payload){
   doc.text(`Cidade de entrega: ${payload.cidade || '-'}`, 14, 40);
   doc.text(`Data: ${new Date(payload.criadoEm).toLocaleDateString('pt-BR')}`, 14, 46);
   doc.text(`Taxa do dólar: R$ ${payload.taxaDolar.toFixed(2)}`, 130, 34);
-  doc.text(`Nota Fiscal: ${payload.incluirNF ? 'Sim (+'+payload.nfPercent+'%)' : 'Não'}`, 130, 40);
+  doc.text(`Nota Fiscal: ${payload.incluirNF ? 'Sim' : 'Não'}`, 130, 40);
 
   doc.autoTable({
     startY: 54,
@@ -2889,7 +2889,7 @@ function exportPDF(payload){
     ['Conversão para BRL', fmtBRL(payload.totalBrl)]
   ];
   if(payload.taxaCidade) totalsRows.push([`Taxa da cidade / frete (${payload.taxaCidade}%)`, fmtBRL(payload.valorTaxaCidade)]);
-  if(payload.incluirNF) totalsRows.push([`Nota Fiscal (+${payload.nfPercent}%)`, fmtBRL(payload.totalBrlFinal*(payload.nfPercent/100))]);
+  if(payload.incluirNF) totalsRows.push([`Nota Fiscal`, fmtBRL(payload.totalBrlFinal*(payload.nfPercent/100))]);
   totalsRows.push(['TOTAL FINAL', fmtBRL(payload.totalFinal)]);
 
   doc.autoTable({
@@ -2942,7 +2942,7 @@ function exportXLSX(payload){
   rows.push({'Código':'Total USD', 'Produto': Number(payload.totalUsd.toFixed(2))});
   rows.push({'Código':'Total BRL', 'Produto': Number(payload.totalBrl.toFixed(2))});
   if(payload.taxaCidade) rows.push({'Código':`Taxa cidade/frete (${payload.taxaCidade}%)`, 'Produto': Number(payload.valorTaxaCidade.toFixed(2))});
-  if(payload.incluirNF) rows.push({'Código':`Nota Fiscal (+${payload.nfPercent}%)`, 'Produto': Number((payload.totalBrlFinal*(payload.nfPercent/100)).toFixed(2))});
+  if(payload.incluirNF) rows.push({'Código':'Nota Fiscal', 'Produto': Number((payload.totalBrlFinal*(payload.nfPercent/100)).toFixed(2))});
   rows.push({'Código':'TOTAL FINAL (BRL)', 'Produto': Number(payload.totalFinal.toFixed(2))});
 
   const ws = XLSX.utils.json_to_sheet(rows);

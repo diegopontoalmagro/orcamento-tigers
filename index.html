@@ -608,7 +608,7 @@ const NAV_ITEMS = [
   {id:'produtos', label:'Produtos', icon:'produtos'},
   {id:'orcamento', label:'Novo Orçamento', icon:'orcamento'},
   {id:'presupuesto-py', label:'Presupuesto Paraguay', icon:'flag'},
-  // {id:'lucro-real', label:'Lucro Real', icon:'money'}, // oculto temporariamente
+  {id:'lucro-real', label:'Lucro Real', icon:'money'},
   {id:'analisar-orcamento', label:'Analisar Orçamento', icon:'search'},
   {id:'historico', label:'Histórico', icon:'historico'},
   {id:'sync', label:'Sincronização', icon:'sync'}
@@ -781,7 +781,7 @@ function viewProdutos(){
       <div style="overflow-x:auto;">
       <table>
         <thead><tr>
-          <th>Código</th><th>Produto</th><th>Categoria</th><th class="right">Estoque</th><th class="right">Preço mín. (USD)</th>
+          <th>Código</th><th>Produto</th><th>Categoria</th><th class="right">Estoque</th><th class="right">Preço mín. (USD)</th><th>Obs.</th>
         </tr></thead>
         <tbody>
           ${filtered.map(p=>`
@@ -791,6 +791,7 @@ function viewProdutos(){
               <td><input list="categorias-datalist" class="produto-categoria-input" data-codigo="${escapeHtml(p.codigo)}" value="${escapeHtml(p.categoria)}" style="min-width:170px;"></td>
               <td class="right mono">${p.estoque}</td>
               <td class="right mono">${fmtUSD(p.precoMinUsd)}</td>
+              <td><input class="produto-obs-input" data-codigo="${escapeHtml(p.codigo)}" value="${escapeHtml(p.obs||'')}" placeholder="Ex: descontinuado, substituto: X1..." style="min-width:180px;font-size:12px;"></td>
             </tr>`).join('')}
         </tbody>
       </table>
@@ -936,7 +937,75 @@ function closeModal(){
   if(fi) fi.value = '';
 }
 
-/* ===================== ORÇAMENTO (builder) ===================== */
+function showClienteModal(nomeCliente, codigoCliente){
+  const vendas = state.vendas.filter(v=> vendaClienteDisplay(v)===nomeCliente || v.nomeCliente===nomeCliente || (v.codigoCliente && v.codigoCliente===codigoCliente));
+  const totalUsd = vendas.reduce((s,v)=>s+(Number(v.valor)||0),0);
+  const porCat = {};
+  vendas.forEach(v=>(v.categorias||[]).forEach(c=>{ if(!porCat[c]) porCat[c]={total:0,count:0}; porCat[c].total+=Number(v.valor)||0; porCat[c].count++; }));
+  const cats = Object.keys(porCat);
+  const temRede = cats.some(c=>NETWORKING_CATS.includes(c));
+  const temCFTV = cats.includes(CFTV_CAT);
+  let sugestao = '';
+  if(temRede && !temCFTV) sugestao = '⭐ Cliente de rede sem CFTV — oferecer a linha Hikvision.';
+  else if(temCFTV && !temRede) sugestao = '⭐ Cliente de CFTV sem rede — oferecer AP/Switch Huawei eKit ou TP-Link Omada.';
+  else if(temRede && temCFTV) sugestao = '✓ Cliente completo (rede + CFTV) — candidato a programa de parceria/fidelidade.';
+  else sugestao = 'Sem categorias registradas — edite as vendas para ver sugestões personalizadas.';
+
+  const html = `
+    <div class="modal-overlay" id="cliente-modal-overlay">
+      <div class="modal" style="max-width:560px;max-height:85vh;overflow-y:auto;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">
+          <div>
+            <div style="font-size:17px;font-weight:700;">${escapeHtml(nomeCliente)}</div>
+            ${codigoCliente ? `<div class="mono" style="font-size:12px;color:var(--text-muted);">Cód: ${escapeHtml(codigoCliente)}</div>` : ''}
+          </div>
+          <button class="btn-ghost" id="btn-close-cliente-modal" style="padding:4px 10px;">✕</button>
+        </div>
+
+        <div class="grid grid-2" style="margin-bottom:16px;gap:12px;">
+          <div class="card" style="padding:14px;"><div class="stat-label">Total comprado</div><div class="stat-value amber" style="font-size:22px;">${fmtUSD(totalUsd)}</div></div>
+          <div class="card" style="padding:14px;"><div class="stat-label">Notas registradas</div><div class="stat-value" style="font-size:22px;">${vendas.length}</div></div>
+        </div>
+
+        <div class="card" style="margin-bottom:14px;padding:14px;">
+          <div class="section-title" style="margin-bottom:8px;font-size:13px;">Sugestão de venda</div>
+          <div style="font-size:13px;color:var(--text-muted);">${escapeHtml(sugestao)}</div>
+        </div>
+
+        ${cats.length ? `
+        <div class="card" style="margin-bottom:14px;padding:14px;">
+          <div class="section-title" style="margin-bottom:10px;font-size:13px;">Categorias compradas</div>
+          ${Object.entries(porCat).sort((a,b)=>b[1].total-a[1].total).map(([cat,d])=>`
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px;">
+              <span style="color:var(--text-muted);">${escapeHtml(cat)}</span>
+              <span class="mono">${fmtUSD(d.total)}</span>
+            </div>`).join('')}
+        </div>` : ''}
+
+        <div class="card" style="padding:14px;">
+          <div class="section-title" style="margin-bottom:10px;font-size:13px;">Histórico de compras</div>
+          <table>
+            <thead><tr><th>Nota</th><th>Data</th><th class="right">Valor</th><th>Obs.</th></tr></thead>
+            <tbody>
+              ${[...vendas].sort((a,b)=>(b.diaCompra||'').localeCompare(a.diaCompra||'')).map(v=>`
+                <tr>
+                  <td class="mono">${escapeHtml(v.notaFiscal)}</td>
+                  <td class="mono">${v.diaCompra?new Date(v.diaCompra+'T00:00:00').toLocaleDateString('pt-BR'):'-'}</td>
+                  <td class="right mono">${fmtUSD(v.valor)}</td>
+                  <td style="font-size:11px;color:var(--text-muted);">${escapeHtml(v.obs||'')}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>`;
+
+  document.getElementById('modal-root').innerHTML = html;
+  document.getElementById('btn-close-cliente-modal').addEventListener('click', closeModal);
+  document.getElementById('cliente-modal-overlay').addEventListener('click', (e)=>{ if(e.target.id==='cliente-modal-overlay') closeModal(); });
+}
+
+
 function calcLine(item){
   const precoFinal = Number(item.precoMinUsd)||0;
   const subtotalUsd = precoFinal * (Number(item.quantidade)||0);
@@ -1606,6 +1675,125 @@ function viewLucroReal(){
       </div>` : emptyState('Nenhum cálculo salvo ainda.')}
     </div>
   `;
+}
+
+function exportKPIsPDF(){
+  if(!window.jspdf){ toast('O gerador de PDF ainda está carregando. Tente novamente em alguns segundos.', true); return; }
+  try{
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    const stats = calcVendasStats();
+    const periodo = {tudo:'Todos os tempos', mes:'Este mês', trimestre:'Últimos 90 dias', ano:'Este ano', semana:'Esta semana'}[state.kpiPeriodo]||'';
+    const dataHoje = new Date().toLocaleDateString('pt-BR');
+
+    // Cabeçalho
+    doc.setFillColor(26,32,40);
+    doc.rect(0,0,210,28,'F');
+    doc.setTextColor(255,255,255);
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(16);
+    doc.text('Tigers del Este — Relatório KPIs', 14, 12);
+    doc.setFontSize(9);
+    doc.setFont('helvetica','normal');
+    doc.text(`Período: ${periodo}  ·  Gerado em: ${dataHoje}`, 14, 20);
+
+    let y = 36;
+
+    // KPIs principais
+    doc.autoTable({
+      startY: y,
+      head:[['Indicador','Valor']],
+      body:[
+        ['Total vendido', fmtUSD(stats.totalUsd)],
+        ['Notas registradas', String(stats.totalVendas)],
+        ['Ticket médio', fmtUSD(stats.ticketMedio)],
+        ['Novos integradores captados', String(stats.novosIntegradores.length)],
+        ['Penetração CFTV na base de redes', stats.penetracaoCftv!==null ? stats.penetracaoCftv.toFixed(0)+'%' : '—'],
+        ...(stats.crescimentoPercent!==null ? [['Crescimento vs. mês anterior', (stats.crescimentoPercent>=0?'+':'')+stats.crescimentoPercent.toFixed(1)+'%']] : [])
+      ],
+      styles:{fontSize:10},
+      headStyles:{fillColor:[26,32,40]},
+      columnStyles:{1:{halign:'right', fontStyle:'bold'}},
+      theme:'striped'
+    });
+    y = doc.lastAutoTable.finalY + 8;
+
+    // Resumo executivo
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(11);
+    doc.setTextColor(40,40,40);
+    doc.text('Resumo Executivo', 14, y+6);
+    y += 10;
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(9);
+    doc.setTextColor(90,90,90);
+    const resumoLines = doc.splitTextToSize(gerarResumoExecutivo(stats), 182);
+    doc.text(resumoLines, 14, y);
+    y += resumoLines.length * 5 + 8;
+
+    // Vendas por mês
+    if(stats.mesesOrdenados.length){
+      doc.autoTable({
+        startY: y,
+        head:[['Mês','Total (USD)','Notas','Ticket Médio']],
+        body: stats.mesesOrdenados.map(k=>{
+          const m = stats.porMes[k];
+          return [m.label, fmtUSD(m.total), String(m.count), fmtUSD(m.count?m.total/m.count:0)];
+        }),
+        styles:{fontSize:9},
+        headStyles:{fillColor:[26,32,40]},
+        columnStyles:{1:{halign:'right'},2:{halign:'right'},3:{halign:'right'}},
+        theme:'striped',
+        didDrawPage: (d)=>{ if(d.pageCount>1){ doc.setFontSize(8); doc.setTextColor(150); doc.text(`Página ${d.pageCount}`, 196, 290, {align:'right'}); } }
+      });
+      y = doc.lastAutoTable.finalY + 8;
+    }
+
+    // Top categorias
+    const catEntries = Object.entries(stats.porCategoria).sort((a,b)=>b[1].total-a[1].total).slice(0,8);
+    if(catEntries.length){
+      doc.autoTable({
+        startY: y,
+        head:[['Categoria','Total (USD)','Vendas']],
+        body: catEntries.map(([cat,d])=>[cat, fmtUSD(d.total), String(d.count)]),
+        styles:{fontSize:9},
+        headStyles:{fillColor:[26,32,40]},
+        columnStyles:{1:{halign:'right'},2:{halign:'right'}},
+        theme:'striped'
+      });
+      y = doc.lastAutoTable.finalY + 8;
+    }
+
+    // Top clientes
+    const topClientes = Object.values(stats.porCliente).sort((a,b)=>b.total-a.total).slice(0,10);
+    if(topClientes.length){
+      doc.autoTable({
+        startY: y,
+        head:[['Cliente','Total (USD)','Notas']],
+        body: topClientes.map(c=>[c.nome, fmtUSD(c.total), String(c.count)]),
+        styles:{fontSize:9},
+        headStyles:{fillColor:[26,32,40]},
+        columnStyles:{1:{halign:'right'},2:{halign:'right'}},
+        theme:'striped'
+      });
+    }
+
+    // Rodapé
+    const pageCount = doc.internal.getNumberOfPages();
+    for(let i=1;i<=pageCount;i++){
+      doc.setPage(i);
+      doc.setFont('helvetica','normal');
+      doc.setFontSize(8);
+      doc.setTextColor(160);
+      doc.text('Tigers del Este — Uso interno', 14, 290);
+      doc.text(`${i}/${pageCount}`, 196, 290, {align:'right'});
+    }
+
+    downloadBlob(doc.output('blob'), `kpis_tigers_${dataHoje.replace(/\//g,'-')}.pdf`);
+  }catch(err){
+    toast('Não consegui gerar o PDF. Tente novamente.', true);
+    console.error(err);
+  }
 }
 
 function buildLucroRealTotaisHTML(totais){
@@ -2364,6 +2552,7 @@ function viewKPIs(){
         <div class="page-title">KPIs</div>
         <div class="page-desc">Indicadores de desempenho comercial — ${periodoLabels[state.kpiPeriodo]||'Todos os tempos'}</div>
       </div>
+      <button class="btn-secondary" id="btn-kpi-pdf" style="display:inline-flex;align-items:center;gap:6px;">${ICONS.pdf} Exportar PDF</button>
     </div>
 
     <!-- Filtro de período -->
@@ -2453,7 +2642,7 @@ function viewKPIs(){
           const maxT = Math.max(...Object.values(stats.porCliente).map(x=>x.total))||1;
           return `<div style="margin-bottom:10px;">
             <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
-              <span style="color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:65%;">${escapeHtml(c.nome)}</span>
+              <span class="kpi-cliente-link" data-codigo="${escapeHtml(c.codigo||'')}" data-nome="${escapeHtml(c.nome)}" style="color:var(--teal);cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:65%;text-decoration:underline dotted;">${escapeHtml(c.nome)}</span>
               <span class="mono">${fmtUSD(c.total)}</span>
             </div>
             <div style="height:6px;background:var(--surface-3);border-radius:3px;overflow:hidden;">
@@ -2483,6 +2672,46 @@ function viewKPIs(){
           <div style="font-size:12px;color:var(--text-muted);margin-top:6px;">${escapeHtml(s.sugestao)}</div>
         </div>`).join('') || emptyState('Cadastre categorias nas vendas para ver oportunidades.')}
     </div>
+
+    <!-- Comparativo de períodos (mês atual vs anterior) -->
+    ${(()=>{
+      if(stats.mesesOrdenados.length < 2) return '';
+      const meses = stats.mesesOrdenados.slice(-3).reverse(); // últimos 3 meses
+      return `
+      <div class="card" style="margin-bottom:22px;">
+        <div class="section-title" style="margin-bottom:16px;">Comparativo de períodos</div>
+        <div style="overflow-x:auto;">
+        <table>
+          <thead><tr>
+            <th>Indicador</th>
+            ${meses.map(k=>`<th class="right">${escapeHtml(stats.porMes[k].label)}</th>`).join('')}
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td style="color:var(--text-muted);">Total vendido</td>
+              ${meses.map((k,i)=>{
+                const v = stats.porMes[k].total;
+                const prev = meses[i+1] ? stats.porMes[meses[i+1]].total : null;
+                const diff = prev!==null && prev>0 ? ((v-prev)/prev*100) : null;
+                return `<td class="right mono">${fmtUSD(v)}${diff!==null?` <span style="font-size:11px;color:${diff>=0?'var(--teal)':'var(--danger)'};">${diff>=0?'▲':'▼'}${Math.abs(diff).toFixed(0)}%</span>`:''}`;
+              }).join('')}
+            </tr>
+            <tr>
+              <td style="color:var(--text-muted);">Notas registradas</td>
+              ${meses.map(k=>`<td class="right mono">${stats.porMes[k].count}</td>`).join('')}
+            </tr>
+            <tr>
+              <td style="color:var(--text-muted);">Ticket médio</td>
+              ${meses.map(k=>{
+                const tm = stats.porMes[k].count ? stats.porMes[k].total/stats.porMes[k].count : 0;
+                return `<td class="right mono">${fmtUSD(tm)}</td>`;
+              }).join('')}
+            </tr>
+          </tbody>
+        </table>
+        </div>
+      </div>`;
+    })()}
 
     <!-- Penetração CFTV -->
     <div class="card">
@@ -2954,6 +3183,15 @@ function attachHandlers(){
       }
       render();
     });
+  });
+  document.querySelectorAll('.produto-obs-input').forEach(el=>{
+    const saveObs = (e)=>{
+      const codigo = e.target.getAttribute('data-codigo');
+      const p = state.produtos.find(pp=>pp.codigo===codigo);
+      if(p){ p.obs = e.target.value.trim(); DB.set('produtos', state.produtos); }
+    };
+    el.addEventListener('blur', saveObs);
+    el.addEventListener('change', saveObs);
   });
 
   // Orçamento header fields — texto simples (sem recálculo, sem re-render)
@@ -3480,6 +3718,15 @@ function attachHandlers(){
   });
 
   // KPI período e meta
+  const btnKpiPdf = document.getElementById('btn-kpi-pdf');
+  if(btnKpiPdf) btnKpiPdf.addEventListener('click', exportKPIsPDF);
+  document.querySelectorAll('.kpi-cliente-link').forEach(el=>{
+    el.addEventListener('click', (e)=>{
+      const nome = e.currentTarget.getAttribute('data-nome');
+      const cod = e.currentTarget.getAttribute('data-codigo');
+      showClienteModal(nome, cod);
+    });
+  });
   document.querySelectorAll('.kpi-periodo-btn').forEach(el=>{
     el.addEventListener('click', (e)=>{
       state.kpiPeriodo = e.currentTarget.getAttribute('data-periodo');

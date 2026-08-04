@@ -361,7 +361,7 @@ function scheduleCloudSync(){
   cloudSyncTimer = setTimeout(async ()=>{
     cloudSyncStatus = 'syncing';
     try{
-      await ghUpdateGist(token, gistId, {produtos: state.produtos, orcamentos: state.orcamentos, presupuestosPy: state.presupuestosPy, lucroReal: state.lucroReal, vendas: state.vendas, atualizadoEm: Date.now()});
+      await ghUpdateGist(token, gistId, {produtos: state.produtos, orcamentos: state.orcamentos, presupuestosPy: state.presupuestosPy, lucroReal: state.lucroReal, pipeline: state.pipeline, clientes: state.clientes, vendas: state.vendas, atualizadoEm: Date.now()});
       cloudSyncStatus = 'ok';
     }catch(e){
       cloudSyncStatus = 'error';
@@ -378,7 +378,7 @@ async function createAutoGist(){
   toast('Criando Gist no GitHub...');
   lastSyncDebug = [];
   try{
-    const id = await ghCreateGist(token, {produtos: state.produtos, orcamentos: state.orcamentos, presupuestosPy: state.presupuestosPy, lucroReal: state.lucroReal, vendas: state.vendas, atualizadoEm: Date.now()});
+    const id = await ghCreateGist(token, {produtos: state.produtos, orcamentos: state.orcamentos, presupuestosPy: state.presupuestosPy, lucroReal: state.lucroReal, pipeline: state.pipeline, clientes: state.clientes, vendas: state.vendas, atualizadoEm: Date.now()});
     localStorage.setItem('tigers_gh_token', token);
     localStorage.setItem('tigers_gh_gist_id', id);
     cloudSyncStatus = 'ok';
@@ -406,6 +406,8 @@ async function connectGithubSync(){
     state.vendas = Array.isArray(data.vendas) ? data.vendas : [];
     state.presupuestosPy = Array.isArray(data.presupuestosPy) ? data.presupuestosPy : [];
     state.lucroReal = Array.isArray(data.lucroReal) ? data.lucroReal : [];
+    state.pipeline = Array.isArray(data.pipeline) ? data.pipeline : [];
+    state.clientes = Array.isArray(data.clientes) ? data.clientes : [];
     localStorage.setItem('tigers_gh_token', token);
     localStorage.setItem('tigers_gh_gist_id', gistId);
     localStorage.setItem('tigers_produtos', JSON.stringify(state.produtos));
@@ -468,6 +470,8 @@ let state = {
   produtoSearch: '',
   kpiPeriodo: 'tudo', // 'semana' | 'mes' | 'trimestre' | 'ano' | 'tudo'
   kpiMeta: '', // meta mensal em USD (string para facilitar input)
+  pipeline: [], // {id, nomeCliente, codigoCliente, etapa, valorEstimado, obs, dataFollowup, tags}
+  clientes: [], // {id, nome, codigo, telefone, cidade, obs, dataCadastro}
   produtoCategoriaFiltro: '',
   editingOrcamentoId: null
 };
@@ -597,7 +601,8 @@ const ICONS = {
   sync: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 16v4h4M21 8V4h-4"/></svg>',
   vendas: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18"/><path d="M7 15l4-5 4 3 5-7"/></svg>',
   star: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.7 6.9-6.3-3.8-6.3 3.8 1.7-6.9-5.4-4.7 7.1-.6z"/></svg>',
-  flag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 21V4"/><path d="M5 4h14l-3 4 3 4H5"/></svg>'
+  flag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 21V4"/><path d="M5 4h14l-3 4 3 4H5"/></svg>',
+  chart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>'
 };
 
 /* ===================== NAV ===================== */
@@ -605,6 +610,8 @@ const NAV_ITEMS = [
   {id:'dashboard', label:'Painel', icon:'dashboard'},
   {id:'vendas', label:'Vendas', icon:'vendas'},
   {id:'kpis', label:'KPIs', icon:'target'},
+  {id:'pipeline', label:'Pipeline', icon:'chart'},
+  {id:'clientes', label:'Clientes (CRM)', icon:'users'},
   {id:'produtos', label:'Produtos', icon:'produtos'},
   {id:'orcamento', label:'Novo Orçamento', icon:'orcamento'},
   {id:'presupuesto-py', label:'Presupuesto Paraguay', icon:'flag'},
@@ -665,6 +672,8 @@ function render(){
   else if(state.view==='sync') main.innerHTML = viewSync();
   else if(state.view==='vendas') main.innerHTML = viewVendas();
   else if(state.view==='kpis') main.innerHTML = viewKPIs();
+  else if(state.view==='pipeline') main.innerHTML = viewPipeline();
+  else if(state.view==='clientes') main.innerHTML = viewClientes();
   attachHandlers();
 }
 
@@ -678,6 +687,8 @@ function viewDashboard(){
   state.produtos.forEach(p=>{ const c = p.categoria||'Sem categoria'; porCategoria[c]=(porCategoria[c]||0)+1; });
   const catEntries = Object.entries(porCategoria).sort((a,b)=>b[1]-a[1]);
   const maxCat = catEntries.length ? catEntries[0][1] : 1;
+  const hoje = new Date().toISOString().slice(0,10);
+  const alertasPipeline = state.pipeline.filter(p=> p.dataFollowup && p.dataFollowup <= hoje && !['fechado','perdido'].includes(p.etapa));
 
   return `
     <div class="page-header">
@@ -686,6 +697,16 @@ function viewDashboard(){
         <div class="page-desc">Visão geral do catálogo e dos orçamentos gerados</div>
       </div>
     </div>
+    ${alertasPipeline.length ? `
+    <div class="card" style="margin-bottom:18px;border-color:var(--amber);cursor:pointer;" id="btn-goto-pipeline-alert">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-size:20px;">⏰</span>
+        <div>
+          <strong style="color:var(--amber);">${alertasPipeline.length} follow-up(s) pendente(s)</strong>
+          <div style="font-size:12px;color:var(--text-muted);">${alertasPipeline.map(p=>escapeHtml(p.nomeCliente)).join(', ')} — <u>ver Pipeline</u></div>
+        </div>
+      </div>
+    </div>` : ''}
     ${!hasGhSync() ? `
     <div class="card" style="margin-bottom:18px;border-color:var(--amber);">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
@@ -2182,6 +2203,224 @@ async function extrairTextoArquivo(file){
 }
 
 
+/* ===================== PIPELINE (FUNIL DE VENDAS) ===================== */
+const ETAPAS_PIPELINE = [
+  {id:'lead', label:'Lead', cor:'var(--text-muted)'},
+  {id:'proposta', label:'Proposta Enviada', cor:'var(--blue)'},
+  {id:'negociacao', label:'Em Negociação', cor:'var(--amber)'},
+  {id:'fechado', label:'Fechado ✓', cor:'var(--teal)'},
+  {id:'perdido', label:'Perdido ✗', cor:'var(--danger)'}
+];
+
+function viewPipeline(){
+  const hoje = new Date().toISOString().slice(0,10);
+  const alertas = state.pipeline.filter(p=> p.dataFollowup && p.dataFollowup <= hoje && !['fechado','perdido'].includes(p.etapa));
+  const totalEstimado = state.pipeline.filter(p=>!['perdido'].includes(p.etapa)).reduce((s,p)=>s+(Number(p.valorEstimado)||0),0);
+
+  return `
+    <div class="page-header">
+      <div>
+        <div class="page-title">Pipeline de Vendas</div>
+        <div class="page-desc">Acompanhe o funil: Lead → Proposta → Negociação → Fechado</div>
+      </div>
+      <button class="btn-primary" id="btn-add-pipeline" style="display:inline-flex;align-items:center;gap:6px;">${ICONS.plus} Novo lead/proposta</button>
+    </div>
+
+    ${alertas.length ? `
+    <div class="card" style="margin-bottom:18px;border-color:var(--amber);">
+      <div class="section-title" style="color:var(--amber);margin-bottom:8px;">⏰ Follow-ups pendentes (${alertas.length})</div>
+      ${alertas.map(p=>`
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);">
+          <div><strong>${escapeHtml(p.nomeCliente)}</strong> <span style="font-size:12px;color:var(--text-muted);">— ${ETAPAS_PIPELINE.find(e=>e.id===p.etapa)?.label||p.etapa}</span></div>
+          <div style="font-size:12px;color:var(--amber);">Previsto: ${new Date(p.dataFollowup+'T00:00:00').toLocaleDateString('pt-BR')}</div>
+        </div>`).join('')}
+    </div>` : ''}
+
+    <div class="grid grid-4" style="margin-bottom:20px;">
+      ${ETAPAS_PIPELINE.map(e=>{
+        const itens = state.pipeline.filter(p=>p.etapa===e.id);
+        const total = itens.reduce((s,p)=>s+(Number(p.valorEstimado)||0),0);
+        return `<div class="card" style="border-top:3px solid ${e.cor};">
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">${escapeHtml(e.label)}</div>
+          <div style="font-size:22px;font-weight:700;color:${e.cor};">${itens.length}</div>
+          <div style="font-size:12px;color:var(--text-muted);">${total>0?fmtUSD(total):''}</div>
+        </div>`;
+      }).join('')}
+    </div>
+
+    <div id="pipeline-form-card"></div>
+
+    <div class="card">
+      <div class="section-title" style="margin-bottom:16px;">Todos os negócios</div>
+      ${state.pipeline.length ? `
+      <div style="overflow-x:auto;">
+      <table>
+        <thead><tr><th>Cliente</th><th>Etapa</th><th class="right">Valor Est.</th><th>Follow-up</th><th>Obs.</th><th></th></tr></thead>
+        <tbody>
+          ${[...state.pipeline].sort((a,b)=>{
+            const ord = {lead:0,proposta:1,negociacao:2,fechado:3,perdido:4};
+            return (ord[a.etapa]||0)-(ord[b.etapa]||0);
+          }).map(p=>{
+            const etapa = ETAPAS_PIPELINE.find(e=>e.id===p.etapa)||{};
+            const atrasado = p.dataFollowup && p.dataFollowup < hoje && !['fechado','perdido'].includes(p.etapa);
+            return `<tr>
+              <td><strong>${escapeHtml(p.nomeCliente)}</strong>${p.codigoCliente?` <span class="mono" style="font-size:11px;color:var(--text-muted);">Cód:${escapeHtml(p.codigoCliente)}</span>`:''}
+              ${(p.tags||[]).map(t=>`<span class="tag" style="margin-left:4px;">${escapeHtml(t)}</span>`).join('')}
+              </td>
+              <td><span style="color:${etapa.cor||'inherit'};font-size:12px;font-weight:600;">${escapeHtml(etapa.label||p.etapa)}</span></td>
+              <td class="right mono">${p.valorEstimado?fmtUSD(p.valorEstimado):'—'}</td>
+              <td style="font-size:12px;color:${atrasado?'var(--danger)':'var(--text-muted)'};">${p.dataFollowup?new Date(p.dataFollowup+'T00:00:00').toLocaleDateString('pt-BR'):'—'}${atrasado?' ⚠':''}</td>
+              <td style="font-size:12px;color:var(--text-muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(p.obs||'')}</td>
+              <td class="center" style="white-space:nowrap;">
+                <button class="btn-secondary pipeline-edit" data-id="${p.id}" style="font-size:11px;padding:5px 8px;margin-right:3px;">${ICONS.edit} Editar</button>
+                <button class="icon-btn danger pipeline-delete" data-id="${p.id}">${ICONS.trash}</button>
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+      </div>` : emptyState('Nenhum negócio no pipeline ainda.')}
+    </div>
+  `;
+}
+
+function renderPipelineForm(draft){
+  const card = document.getElementById('pipeline-form-card');
+  if(!card) return;
+  if(!draft){ card.innerHTML=''; return; }
+  card.innerHTML = `
+    <div class="card" style="margin-bottom:18px;">
+      <div class="section-title" style="margin-bottom:16px;">${draft.id?'Editar negócio':'Novo negócio'}</div>
+      <div class="grid grid-2" style="margin-bottom:14px;gap:14px;">
+        <div><label>Cliente</label><input id="pl-nome" value="${escapeHtml(draft.nomeCliente)}" placeholder="Nome do cliente"></div>
+        <div><label>Código do cliente</label><input id="pl-codigo" value="${escapeHtml(draft.codigoCliente||'')}" placeholder="Cód."></div>
+        <div>
+          <label>Etapa</label>
+          <select id="pl-etapa" style="width:100%;">
+            ${ETAPAS_PIPELINE.map(e=>`<option value="${e.id}" ${draft.etapa===e.id?'selected':''}>${e.label}</option>`).join('')}
+          </select>
+        </div>
+        <div><label>Valor estimado (USD)</label><input type="number" step="0.01" id="pl-valor" value="${draft.valorEstimado||''}" placeholder="Ex: 500"></div>
+        <div><label>Data do follow-up</label><input type="date" id="pl-followup" value="${draft.dataFollowup||''}"></div>
+        <div><label>Obs.</label><input id="pl-obs" value="${escapeHtml(draft.obs||'')}" placeholder="Notas sobre o negócio"></div>
+      </div>
+      <div style="display:flex;gap:10px;">
+        <button class="btn-primary" id="btn-salvar-pipeline">Salvar</button>
+        <button class="btn-ghost" id="btn-cancelar-pipeline">Cancelar</button>
+      </div>
+    </div>`;
+  document.getElementById('btn-salvar-pipeline').addEventListener('click', ()=>{
+    const item = {
+      id: draft.id || uid(),
+      nomeCliente: document.getElementById('pl-nome').value.trim(),
+      codigoCliente: document.getElementById('pl-codigo').value.trim(),
+      etapa: document.getElementById('pl-etapa').value,
+      valorEstimado: Number(document.getElementById('pl-valor').value)||0,
+      dataFollowup: document.getElementById('pl-followup').value,
+      obs: document.getElementById('pl-obs').value.trim(),
+      tags: draft.tags||[]
+    };
+    if(!item.nomeCliente){ toast('Informe o nome do cliente.', true); return; }
+    if(draft.id){ const i = state.pipeline.findIndex(x=>x.id===draft.id); if(i>-1) state.pipeline[i]=item; }
+    else state.pipeline.push(item);
+    DB.set('pipeline', state.pipeline);
+    toast('Negócio salvo.');
+    render();
+  });
+  document.getElementById('btn-cancelar-pipeline').addEventListener('click', ()=>{ card.innerHTML=''; });
+}
+
+/* ===================== CRM — CLIENTES ===================== */
+function viewClientes(){
+  const busca = (state.produtoSearch||'').toLowerCase(); // reuse search state
+  const clientes = state.clientes.filter(c=>
+    !busca || c.nome.toLowerCase().includes(busca) || (c.codigo||'').toLowerCase().includes(busca) || (c.cidade||'').toLowerCase().includes(busca)
+  );
+
+  return `
+    <div class="page-header">
+      <div>
+        <div class="page-title">Clientes (CRM)</div>
+        <div class="page-desc">Cadastro completo de clientes — nome, código, contato, cidade e histórico</div>
+      </div>
+      <button class="btn-primary" id="btn-add-cliente-crm" style="display:inline-flex;align-items:center;gap:6px;">${ICONS.plus} Novo cliente</button>
+    </div>
+
+    <div style="margin-bottom:16px;">
+      <input id="crm-busca" value="${escapeHtml(busca)}" placeholder="Buscar por nome, código ou cidade..." style="max-width:340px;">
+    </div>
+
+    <div id="crm-form-card"></div>
+
+    <div class="card">
+      <div class="section-title" style="margin-bottom:14px;">${clientes.length} cliente(s) cadastrado(s)</div>
+      ${clientes.length ? `
+      <div style="overflow-x:auto;">
+      <table>
+        <thead><tr><th>Nome</th><th>Código</th><th>Cidade</th><th>Telefone</th><th>Obs.</th><th>Vendas</th><th></th></tr></thead>
+        <tbody>
+          ${clientes.map(c=>{
+            const vendas = state.vendas.filter(v=>v.codigoCliente===c.codigo||(v.nomeCliente===c.nome));
+            const totalVendas = vendas.reduce((s,v)=>s+(Number(v.valor)||0),0);
+            return `<tr>
+              <td><strong class="kpi-cliente-link" data-codigo="${escapeHtml(c.codigo||'')}" data-nome="${escapeHtml(c.nome)}" style="cursor:pointer;color:var(--teal);text-decoration:underline dotted;">${escapeHtml(c.nome)}</strong></td>
+              <td class="mono">${escapeHtml(c.codigo||'—')}</td>
+              <td>${escapeHtml(c.cidade||'—')}</td>
+              <td class="mono">${escapeHtml(c.telefone||'—')}</td>
+              <td style="font-size:12px;color:var(--text-muted);">${escapeHtml(c.obs||'')}</td>
+              <td class="right mono" style="color:${totalVendas>0?'var(--teal)':'var(--text-muted)'};">${totalVendas>0?fmtUSD(totalVendas):'—'}</td>
+              <td class="center" style="white-space:nowrap;">
+                <button class="btn-secondary crm-edit" data-id="${c.id}" style="font-size:11px;padding:5px 8px;margin-right:3px;">${ICONS.edit} Editar</button>
+                <button class="icon-btn danger crm-delete" data-id="${c.id}">${ICONS.trash}</button>
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+      </div>` : emptyState('Nenhum cliente cadastrado. Clique em "Novo cliente" para começar.')}
+    </div>
+  `;
+}
+
+function renderCRMForm(draft){
+  const card = document.getElementById('crm-form-card');
+  if(!card) return;
+  if(!draft){ card.innerHTML=''; return; }
+  card.innerHTML = `
+    <div class="card" style="margin-bottom:18px;">
+      <div class="section-title" style="margin-bottom:14px;">${draft.id?'Editar cliente':'Novo cliente'}</div>
+      <div class="grid grid-2" style="margin-bottom:14px;gap:14px;">
+        <div><label>Nome</label><input id="crm-nome" value="${escapeHtml(draft.nome||'')}" placeholder="Nome completo / empresa"></div>
+        <div><label>Código (como cadastrado na empresa)</label><input id="crm-codigo" value="${escapeHtml(draft.codigo||'')}" placeholder="Ex: 2983"></div>
+        <div><label>Telefone / WhatsApp</label><input id="crm-telefone" value="${escapeHtml(draft.telefone||'')}" placeholder="+55 41 99999-9999"></div>
+        <div><label>Cidade</label><input id="crm-cidade" value="${escapeHtml(draft.cidade||'')}" placeholder="Ex: Curitiba - PR"></div>
+        <div style="grid-column:1/-1;"><label>Observações</label><input id="crm-obs" value="${escapeHtml(draft.obs||'')}" placeholder="Ex: prefere pagamento à vista, cliente desde 2024..."></div>
+      </div>
+      <div style="display:flex;gap:10px;">
+        <button class="btn-primary" id="btn-salvar-crm">Salvar</button>
+        <button class="btn-ghost" id="btn-cancelar-crm">Cancelar</button>
+      </div>
+    </div>`;
+  document.getElementById('btn-salvar-crm').addEventListener('click', ()=>{
+    const item = {
+      id: draft.id || uid(),
+      nome: document.getElementById('crm-nome').value.trim(),
+      codigo: document.getElementById('crm-codigo').value.trim(),
+      telefone: document.getElementById('crm-telefone').value.trim(),
+      cidade: document.getElementById('crm-cidade').value.trim(),
+      obs: document.getElementById('crm-obs').value.trim(),
+      dataCadastro: draft.dataCadastro || Date.now()
+    };
+    if(!item.nome){ toast('Informe o nome do cliente.', true); return; }
+    if(draft.id){ const i = state.clientes.findIndex(x=>x.id===draft.id); if(i>-1) state.clientes[i]=item; }
+    else state.clientes.push(item);
+    DB.set('clientes', state.clientes);
+    toast('Cliente salvo.');
+    render();
+  });
+  document.getElementById('btn-cancelar-crm').addEventListener('click', ()=>{ card.innerHTML=''; });
+}
+
 const NETWORKING_CATS = [
   'Redes — Access Point','Redes — Switch','Redes — Roteador','Redes — ONT/ONU',
   'Redes — OLT','Redes — Fibra Óptica e Acessórios','Redes — Repetidor/Extensor',
@@ -3407,6 +3646,8 @@ function attachHandlers(){
   if(btnDisconnectSync) btnDisconnectSync.addEventListener('click', disconnectSync);
   const btnGotoSync = document.getElementById('btn-goto-sync');
   if(btnGotoSync) btnGotoSync.addEventListener('click', ()=>{ state.view = 'sync'; render(); });
+  const btnGotoPipelineAlert = document.getElementById('btn-goto-pipeline-alert');
+  if(btnGotoPipelineAlert) btnGotoPipelineAlert.addEventListener('click', ()=>{ state.view = 'pipeline'; render(); });
   const btnCopyCode = document.getElementById('btn-copy-code');
   if(btnCopyCode) btnCopyCode.addEventListener('click', ()=>{
     const el = document.getElementById('sync-code-display');
@@ -3815,6 +4056,55 @@ function attachHandlers(){
     });
   });
 
+  // Pipeline
+  const btnAddPipeline = document.getElementById('btn-add-pipeline');
+  if(btnAddPipeline) btnAddPipeline.addEventListener('click', ()=>
+    renderPipelineForm({id:null, nomeCliente:'', codigoCliente:'', etapa:'lead', valorEstimado:'', dataFollowup:'', obs:'', tags:[]})
+  );
+  document.querySelectorAll('.pipeline-edit').forEach(el=>{
+    el.addEventListener('click', (e)=>{
+      const id = e.currentTarget.getAttribute('data-id');
+      const p = state.pipeline.find(x=>x.id===id);
+      if(p) renderPipelineForm({...p});
+    });
+  });
+  document.querySelectorAll('.pipeline-delete').forEach(el=>{
+    el.addEventListener('click', (e)=>{
+      const id = e.currentTarget.getAttribute('data-id');
+      state.pipeline = state.pipeline.filter(x=>x.id!==id);
+      DB.set('pipeline', state.pipeline);
+      render(); toast('Negócio removido.');
+    });
+  });
+
+  // CRM Clientes
+  const btnAddClienteCRM = document.getElementById('btn-add-cliente-crm');
+  if(btnAddClienteCRM) btnAddClienteCRM.addEventListener('click', ()=>
+    renderCRMForm({id:null, nome:'', codigo:'', telefone:'', cidade:'', obs:''})
+  );
+  const crmBusca = document.getElementById('crm-busca');
+  if(crmBusca) crmBusca.addEventListener('input', (e)=>{ state.produtoSearch = e.target.value; render(); });
+  document.querySelectorAll('.crm-edit').forEach(el=>{
+    el.addEventListener('click', (e)=>{
+      const id = e.currentTarget.getAttribute('data-id');
+      const c = state.clientes.find(x=>x.id===id);
+      if(c) renderCRMForm({...c});
+    });
+  });
+  document.querySelectorAll('.crm-delete').forEach(el=>{
+    el.addEventListener('click', (e)=>{
+      const id = e.currentTarget.getAttribute('data-id');
+      state.clientes = state.clientes.filter(x=>x.id!==id);
+      DB.set('clientes', state.clientes);
+      render(); toast('Cliente removido.');
+    });
+  });
+  document.querySelectorAll('.kpi-cliente-link').forEach(el=>{
+    el.addEventListener('click', (e)=>{
+      showClienteModal(e.currentTarget.getAttribute('data-nome'), e.currentTarget.getAttribute('data-codigo'));
+    });
+  });
+
   // KPI período e meta
   const btnKpiPdf = document.getElementById('btn-kpi-pdf');
   if(btnKpiPdf) btnKpiPdf.addEventListener('click', exportKPIsPDF);
@@ -3940,6 +4230,8 @@ async function init(){
         state.vendas = Array.isArray(data.vendas) ? data.vendas : [];
     state.presupuestosPy = Array.isArray(data.presupuestosPy) ? data.presupuestosPy : [];
     state.lucroReal = Array.isArray(data.lucroReal) ? data.lucroReal : [];
+    state.pipeline = Array.isArray(data.pipeline) ? data.pipeline : [];
+    state.clientes = Array.isArray(data.clientes) ? data.clientes : [];
         localStorage.setItem('tigers_produtos', JSON.stringify(state.produtos));
         localStorage.setItem('tigers_orcamentos', JSON.stringify(state.orcamentos));
         localStorage.setItem('tigers_vendas', JSON.stringify(state.vendas));
@@ -3958,6 +4250,8 @@ async function init(){
   state.presupuestosPy = await DB.get('presupuestosPy', []);
   try{ const meta = localStorage.getItem('tigers_kpi_meta'); if(meta) state.kpiMeta = meta; }catch(e){}
   state.lucroReal = await DB.get('lucroReal', []);
+  state.pipeline = await DB.get('pipeline', []);
+  state.clientes = await DB.get('clientes', []);
   render();
 }
 if(__wasLoggedInAtLoad) init();

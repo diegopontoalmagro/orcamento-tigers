@@ -468,8 +468,9 @@ let state = {
   },
   vendaDraft: null, // quando não-nulo, formulário de venda está aberto (novo ou edição)
   produtoSearch: '',
-  kpiPeriodo: 'tudo', // 'semana' | 'mes' | 'trimestre' | 'ano' | 'tudo'
-  kpiMeta: '', // meta mensal em USD (string para facilitar input)
+  kpiPeriodo: 'tudo',
+  kpiMeta: '',
+  kpiModoApresentacao: false,
   pipeline: [], // {id, nomeCliente, codigoCliente, etapa, valorEstimado, obs, dataFollowup, tags}
   clientes: [], // {id, nome, codigo, telefone, cidade, obs, dataCadastro}
   produtoCategoriaFiltro: '',
@@ -660,6 +661,16 @@ function snapshotVendaDraftFields(){
 
 function render(){
   if(state.vendaDraft) snapshotVendaDraftFields();
+  // Modo apresentação: esconde sidebar completamente
+  const sidebar = document.querySelector('.sidebar');
+  const mainEl = document.getElementById('main');
+  if(state.view==='kpis' && state.kpiModoApresentacao){
+    if(sidebar) sidebar.style.display='none';
+    if(mainEl) mainEl.style.marginLeft='0';
+  }else{
+    if(sidebar) sidebar.style.display='';
+    if(mainEl) mainEl.style.marginLeft='';
+  }
   renderNav();
   const main = document.getElementById('main');
   if(state.view==='dashboard') main.innerHTML = viewDashboard();
@@ -2814,7 +2825,96 @@ function buildDonutChart(porCategoria){
   </div>`;
 }
 
+function viewKPIsApresentacao(){
+  const stats = calcVendasStats();
+  const meta = Number(state.kpiMeta)||0;
+  const metaMesPercent = meta>0 ? Math.min(100,(stats.totalMesReal/meta)*100) : null;
+  const periodo = {tudo:'Todos os tempos',mes:'Este mês',trimestre:'Últimos 90 dias',ano:'Este ano',semana:'Esta semana'}[state.kpiPeriodo]||'';
+  const dataHoje = new Date().toLocaleDateString('pt-BR',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  const taxaConversao = stats.totalVendas ? (stats.novosIntegradores.length/stats.totalVendas*100) : null;
+
+  return `
+    <div style="position:fixed;inset:0;background:#0d1117;z-index:2000;overflow-y:auto;padding:0;">
+
+      <!-- Barra superior -->
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:18px 32px;border-bottom:1px solid rgba(255,255,255,.08);">
+        <div style="display:flex;align-items:center;gap:14px;">
+          <div style="display:flex;gap:3px;">${[0,1,2].map(i=>`<div style="width:7px;height:28px;background:${['#f59e0b','#ef4565','#2dd4bf'][i]};border-radius:2px;"></div>`).join('')}</div>
+          <div>
+            <div style="color:#fff;font-size:18px;font-weight:700;letter-spacing:-.3px;">Tigers del Este</div>
+            <div style="color:rgba(255,255,255,.45);font-size:12px;">Relatório Comercial — ${escapeHtml(periodo)}</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:16px;">
+          <div style="color:rgba(255,255,255,.4);font-size:12px;text-align:right;">${escapeHtml(dataHoje)}</div>
+          <button id="btn-sair-apresentacao" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.7);border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;">✕ Sair</button>
+        </div>
+      </div>
+
+      <!-- KPI cards principais -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:18px;padding:28px 32px 0;">
+        ${[
+          {label:'Total Vendido', valor:fmtUSD(stats.totalUsd), cor:'#2dd4bf', sub: stats.crescimentoPercent!==null ? `${stats.crescimentoPercent>=0?'▲':'▼'} ${Math.abs(stats.crescimentoPercent).toFixed(1)}% vs. mês anterior` : ''},
+          {label:'Notas Registradas', valor:String(stats.totalVendas), cor:'#4a9eff', sub:`Ticket médio: ${fmtUSD(stats.ticketMedio)}`},
+          {label:'Novos Integradores', valor:String(stats.novosIntegradores.length), cor:'#f59e0b', sub: taxaConversao!==null ? `Taxa de conversão: ${taxaConversao.toFixed(0)}%` : ''},
+          {label:'Penetração CFTV', valor: stats.penetracaoCftv!==null ? stats.penetracaoCftv.toFixed(0)+'%' : '—', cor: stats.penetracaoCftv!==null&&stats.penetracaoCftv<50?'#ef4565':'#2dd4bf', sub:`${stats.clientesComRedeECftv.length}/${stats.clientesComRede.length} clientes de rede`},
+        ].map(k=>`
+          <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-top:3px solid ${k.cor};border-radius:12px;padding:24px 22px;">
+            <div style="font-size:12px;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">${k.label}</div>
+            <div style="font-size:42px;font-weight:800;color:${k.cor};letter-spacing:-1px;line-height:1;">${k.valor}</div>
+            ${k.sub?`<div style="font-size:13px;color:rgba(255,255,255,.35);margin-top:8px;">${k.sub}</div>`:''}
+          </div>`).join('')}
+      </div>
+
+      <!-- Meta mensal (se configurada) -->
+      ${meta>0 ? `
+      <div style="margin:18px 32px 0;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:20px 24px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+          <span style="color:rgba(255,255,255,.55);font-size:13px;text-transform:uppercase;letter-spacing:.5px;">Meta mensal</span>
+          <span style="color:#f59e0b;font-size:18px;font-weight:700;">${fmtUSD(stats.totalMesReal)} <span style="font-size:13px;color:rgba(255,255,255,.4);">de ${fmtUSD(meta)}</span></span>
+        </div>
+        <div style="height:10px;background:rgba(255,255,255,.06);border-radius:6px;overflow:hidden;">
+          <div style="height:100%;width:${metaMesPercent||0}%;background:linear-gradient(90deg,#f59e0b,#2dd4bf);border-radius:6px;"></div>
+        </div>
+        <div style="font-size:12px;color:rgba(255,255,255,.3);margin-top:6px;">${(metaMesPercent||0).toFixed(1)}% da meta ${stats.totalMesReal>=meta?'🎉':'atingida'}</div>
+      </div>` : ''}
+
+      <!-- Gráfico + categorias -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;padding:18px 32px 0;">
+        <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:20px 22px;">
+          <div style="font-size:12px;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.5px;margin-bottom:14px;">Evolução por mês</div>
+          <div style="filter:invert(1) hue-rotate(180deg) brightness(0.9);">
+            ${buildSVGBar(stats.mesesOrdenados, stats.porMes, meta)}
+          </div>
+        </div>
+        <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:20px 22px;">
+          <div style="font-size:12px;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.5px;margin-bottom:14px;">Vendas por categoria</div>
+          ${Object.entries(stats.porCategoria).sort((a,b)=>b[1].total-a[1].total).slice(0,6).map(([cat,d])=>{
+            const maxCat = Math.max(...Object.values(stats.porCategoria).map(x=>x.total))||1;
+            return `<div style="margin-bottom:12px;">
+              <div style="display:flex;justify-content:space-between;font-size:12px;color:rgba(255,255,255,.5);margin-bottom:4px;">
+                <span>${escapeHtml(cat.replace('Redes — ','').replace('CFTV — ',''))}</span>
+                <span style="font-family:var(--mono);">${fmtUSD(d.total)}</span>
+              </div>
+              <div style="height:6px;background:rgba(255,255,255,.08);border-radius:3px;overflow:hidden;">
+                <div style="height:100%;width:${(d.total/maxCat*100)}%;background:linear-gradient(90deg,#2dd4bf,#f59e0b);border-radius:3px;"></div>
+              </div>
+            </div>`;
+          }).join('') || '<div style="color:rgba(255,255,255,.3);font-size:13px;">Sem dados de categorias ainda.</div>'}
+        </div>
+      </div>
+
+      <!-- Resumo executivo -->
+      <div style="margin:18px 32px 28px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:20px 24px;">
+        <div style="font-size:12px;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">Resumo Executivo</div>
+        <div style="font-size:15px;color:rgba(255,255,255,.65);line-height:1.7;">${escapeHtml(gerarResumoExecutivo(stats))}</div>
+      </div>
+    </div>
+  `;
+}
+
 function viewKPIs(){
+  if(state.kpiModoApresentacao) return viewKPIsApresentacao();
   const stats = calcVendasStats();
   const sugestoes = gerarSugestoes(stats.porCliente);
   const taxaConversao = stats.totalVendas ? (stats.novosIntegradores.length / stats.totalVendas) * 100 : null;
@@ -2837,7 +2937,10 @@ function viewKPIs(){
         <div class="page-title">KPIs</div>
         <div class="page-desc">Indicadores de desempenho comercial — ${periodoLabels[state.kpiPeriodo]||'Todos os tempos'}</div>
       </div>
-      <button class="btn-secondary" id="btn-kpi-pdf" style="display:inline-flex;align-items:center;gap:6px;">${ICONS.pdf} Exportar PDF</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn-secondary" id="btn-kpi-pdf" style="display:inline-flex;align-items:center;gap:6px;">${ICONS.pdf} Exportar PDF</button>
+        <button class="btn-primary" id="btn-modo-apresentacao" style="display:inline-flex;align-items:center;gap:6px;">🖥️ Modo Apresentação</button>
+      </div>
     </div>
 
     <!-- Filtro de período -->
@@ -4108,6 +4211,19 @@ function attachHandlers(){
   // KPI período e meta
   const btnKpiPdf = document.getElementById('btn-kpi-pdf');
   if(btnKpiPdf) btnKpiPdf.addEventListener('click', exportKPIsPDF);
+  const btnModoApresentacao = document.getElementById('btn-modo-apresentacao');
+  if(btnModoApresentacao) btnModoApresentacao.addEventListener('click', ()=>{
+    state.kpiModoApresentacao = true;
+    render();
+    // Tenta tela cheia no navegador
+    try{ document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); }catch(e){}
+  });
+  const btnSairApresentacao = document.getElementById('btn-sair-apresentacao');
+  if(btnSairApresentacao) btnSairApresentacao.addEventListener('click', ()=>{
+    state.kpiModoApresentacao = false;
+    render();
+    try{ document.exitFullscreen && document.exitFullscreen(); }catch(e){}
+  });
   document.querySelectorAll('.kpi-cliente-link').forEach(el=>{
     el.addEventListener('click', (e)=>{
       const nome = e.currentTarget.getAttribute('data-nome');

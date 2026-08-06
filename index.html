@@ -253,6 +253,17 @@ const __wasLoggedInAtLoad = initLoginScreen();
 const __logoutLink = document.getElementById('btn-logout');
 if(__logoutLink) __logoutLink.addEventListener('click', (e)=>{ e.preventDefault(); doLogout(); });
 
+// Navegação por teclado no modo apresentação (← →)
+document.addEventListener('keydown', (e)=>{
+  if(!state.kpiModoApresentacao) return;
+  if(e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+  const PERIODOS_ORDEM = ['semana','mes','3meses','ano','tudo'];
+  const idx = PERIODOS_ORDEM.indexOf(state.kpiPeriodo);
+  if(e.key === 'ArrowRight') state.kpiPeriodo = PERIODOS_ORDEM[Math.min(idx+1, PERIODOS_ORDEM.length-1)];
+  if(e.key === 'ArrowLeft')  state.kpiPeriodo = PERIODOS_ORDEM[Math.max(idx-1, 0)];
+  render();
+});
+
 /* ===================== STORAGE ===================== */
 /* Dados salvos no navegador deste dispositivo (localStorage), com sincronização
    opcional entre dispositivos via um "código de sincronização" (jsonblob.com). */
@@ -2462,28 +2473,35 @@ function filtrarVendasPorPeriodo(periodo){
   const diaNum = String(hoje.getDate()).padStart(2,'0');
   const mesChaveHoje = `${anoHoje}-${mesNum}`;
   const hojeStr = `${anoHoje}-${mesNum}-${diaNum}`;
-  const semanaStr = new Date(hoje.getTime() - 7*24*60*60*1000).toISOString().slice(0,10);
-  const trimestreStr = new Date(hoje.getTime() - 90*24*60*60*1000).toISOString().slice(0,10);
   const anoStr = String(anoHoje);
 
-  if(periodo === 'mes'){
-    // Tenta o mês atual; se não tiver dados, usa o mês mais recente com dados
-    const mesAtual = state.vendas.filter(v=>(v.diaCompra||'').startsWith(mesChaveHoje));
-    if(mesAtual.length > 0) return mesAtual;
-    // Fallback: mês mais recente com dados
-    const comData = state.vendas.filter(v=>v.diaCompra).sort((a,b)=>b.diaCompra.localeCompare(a.diaCompra));
-    const mesRecente = comData.length ? comData[0].diaCompra.slice(0,7) : null;
-    return mesRecente ? state.vendas.filter(v=>(v.diaCompra||'').startsWith(mesRecente)) : [];
+  if(periodo === 'semana'){
+    // Semana atual: segunda-feira da semana corrente até hoje
+    const diaSemana = hoje.getDay(); // 0=dom, 1=seg...
+    const diasAteSegunda = (diaSemana === 0 ? 6 : diaSemana - 1);
+    const segunda = new Date(hoje.getTime() - diasAteSegunda*24*60*60*1000);
+    const segundaStr = segunda.toISOString().slice(0,10);
+    return state.vendas.filter(v=>{ const d=v.diaCompra||''; return d>=segundaStr && d<=hojeStr; });
   }
 
-  return state.vendas.filter(v=>{
-    const d = v.diaCompra||'';
-    if(!d) return false;
-    if(periodo === 'semana')    return d >= semanaStr && d <= hojeStr;
-    if(periodo === 'trimestre') return d >= trimestreStr && d <= hojeStr;
-    if(periodo === 'ano')       return d.startsWith(anoStr);
-    return true;
-  });
+  if(periodo === 'mes'){
+    // Estritamente o mês calendário atual — sem fallback
+    return state.vendas.filter(v=>(v.diaCompra||'').startsWith(mesChaveHoje));
+  }
+
+  if(periodo === '3meses'){
+    // Últimos 3 meses completos + mês atual
+    const m = hoje.getMonth(); // 0-indexed
+    const inicioMes3 = new Date(anoHoje, m - 2, 1); // 3 meses atrás, dia 1
+    const inicioStr = `${inicioMes3.getFullYear()}-${String(inicioMes3.getMonth()+1).padStart(2,'0')}-01`;
+    return state.vendas.filter(v=>{ const d=v.diaCompra||''; return d>=inicioStr && d<=hojeStr; });
+  }
+
+  if(periodo === 'ano'){
+    return state.vendas.filter(v=>(v.diaCompra||'').startsWith(anoStr));
+  }
+
+  return state.vendas;
 }
 
 function calcVendasStats(periodo){
@@ -2829,7 +2847,8 @@ function viewKPIsApresentacao(){
   const stats = calcVendasStats();
   const meta = Number(state.kpiMeta)||0;
   const metaMesPercent = meta>0 ? Math.min(100,(stats.totalMesReal/meta)*100) : null;
-  const periodo = {tudo:'Todos os tempos',mes:'Este mês',trimestre:'Últimos 90 dias',ano:'Este ano',semana:'Esta semana'}[state.kpiPeriodo]||'';
+  const periodoLabelsApres = {tudo:'Todos os tempos', mes:'Este mês', '3meses':'3 meses', ano:'Este ano', semana:'Esta semana'};
+  const periodo = periodoLabelsApres[state.kpiPeriodo]||'Todos os tempos';
   const dataHoje = new Date().toLocaleDateString('pt-BR',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
   const taxaConversao = stats.totalVendas ? (stats.novosIntegradores.length/stats.totalVendas*100) : null;
 
@@ -2847,6 +2866,12 @@ function viewKPIsApresentacao(){
         </div>
         <div style="display:flex;align-items:center;gap:16px;">
           <div style="color:rgba(255,255,255,.4);font-size:12px;text-align:right;">${escapeHtml(dataHoje)}</div>
+          <div style="display:flex;gap:4px;align-items:center;">
+            ${['semana','mes','3meses','ano','tudo'].map(p=>`
+              <div style="width:8px;height:8px;border-radius:50%;background:${state.kpiPeriodo===p?'#2dd4bf':'rgba(255,255,255,.2)'};" title="${periodoLabelsApres[p]||p}"></div>
+            `).join('')}
+            <span style="color:rgba(255,255,255,.3);font-size:11px;margin-left:6px;">← → para navegar</span>
+          </div>
           <button id="btn-sair-apresentacao" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.7);border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;">✕ Sair</button>
         </div>
       </div>
@@ -2921,15 +2946,8 @@ function viewKPIs(){
   const meta = Number(state.kpiMeta)||0;
   const metaMesPercent = meta>0 ? Math.min(100, (stats.totalMesReal/meta)*100) : null;
 
-  const periodoLabels = {tudo:'Todos os tempos', mes:`Este mês${(()=>{
-    const hoje = new Date();
-    const mesChaveHoje = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`;
-    const temMesAtual = state.vendas.some(v=>(v.diaCompra||'').startsWith(mesChaveHoje));
-    if(temMesAtual) return '';
-    const comData = state.vendas.filter(v=>v.diaCompra).sort((a,b)=>b.diaCompra.localeCompare(a.diaCompra));
-    if(!comData.length) return '';
-    return ' ('+vendaMesLabel(comData[0].diaCompra.slice(0,7)+'-01')+')';
-  })()}`, trimestre:'Últimos 90 dias', ano:'Este ano', semana:'Esta semana'};
+  const periodoLabels = {tudo:'Todos os tempos', mes:'Este mês', '3meses':'3 meses', ano:'Este ano', semana:'Esta semana'};
+  const PERIODOS_ORDEM = ['semana','mes','3meses','ano','tudo'];
 
   return `
     <div class="page-header">
@@ -2945,7 +2963,7 @@ function viewKPIs(){
 
     <!-- Filtro de período -->
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:22px;">
-      ${['semana','mes','trimestre','ano','tudo'].map(p=>`
+      ${PERIODOS_ORDEM.map(p=>`
         <button class="btn-${state.kpiPeriodo===p?'primary':'secondary'} kpi-periodo-btn" data-periodo="${p}" style="font-size:12px;padding:7px 14px;">
           ${periodoLabels[p]}
         </button>`).join('')}
